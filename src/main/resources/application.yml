@@ -1,0 +1,24 @@
+server:
+  port: 8848
+
+logging:
+  config: classpath:log4j2-spring.xml
+
+experiment:
+  spark:
+    master:
+      host: localhost
+      port: 7077
+      submission:
+        port: 6066
+    driver:
+      memory: 4g
+      cores: 1
+    executor:
+      memory: 4g
+      cores: 1
+  timeout: 3600
+  jar: /Users/bdaiab/Research/Projects/SparkSQLPlus/target/spark-sql-plus-jar-with-dependencies.jar
+  data: /Users/bdaiab/Research/Projects/SparkSQLPlus/examples/data
+  result:
+    path: /tmp/sparksql-plus.log
