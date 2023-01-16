@@ -4,4 +4,4 @@ SCRIPT=$(readlink -f $0)
 SCRIPT_PATH=$(dirname "${SCRIPT}")
 HOME_PATH=$(dirname "${SCRIPT_PATH}")
 
-java -cp "${HOME_PATH}/target/sparksql-plus-jar-with-dependencies.jar" sqlplus.cli.CliFrontend "$@"
+java -cp "${HOME_PATH}/sqlplus-cli/target/sparksql-plus-cli-jar-with-dependencies.jar" sqlplus.cli.CliFrontend "$@"
