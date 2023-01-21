@@ -40,7 +40,7 @@ object Query8SparkSQL {
 			"SELECT g1.src, g1.dst, g2.dst, g3.dst, g4.dst " +
 				"From Graph g1, Graph g2, Graph g3, Graph g4 " +
 				"where g1.dst = g2.src and g2.dst = g3.src and g3.dst = g4.src " +
-				"and g1.src < g2.src and g1.src < g4.dst")
+				"and g2.src < g2.dst and g3.src < g3.dst")
 
 		val ts1 = System.currentTimeMillis()
 		val resultCnt = resultDF.count()

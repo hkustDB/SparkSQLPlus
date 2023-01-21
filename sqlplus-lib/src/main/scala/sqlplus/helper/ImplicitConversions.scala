@@ -135,9 +135,12 @@ class KeyByRDD[K: ClassTag](input: RDD[(K, Array[Any])]) extends Serializable {
      * @param that the target RDD to be enumerated
      * @param extractIndices1 the indices that indicates which fields in current RDD will be preserved after enumeration
      * @param extractIndices2 the indices that indicates which fields in target RDD will be preserved after enumeration
+     * @param resultKeySelector a function that extract key fields
+     * @tparam T the type of key fields after enumerate
      * @return
      */
-    def enumerate(that: RDD[(K, Array[Array[Any]])], extractIndices1: Array[Int], extractIndices2: Array[Int]): RDD[(K, Array[Any])] = {
+    def enumerateWithoutComparison[T](that: RDD[(K, Array[Array[Any]])], extractIndices1: Array[Int], extractIndices2: Array[Int],
+                  resultKeySelector: (Array[Any], Array[Any]) => T = null): RDD[(T, Array[Any])] = {
         input.cogroup(that).filter(x => x._2._1.nonEmpty && x._2._2.nonEmpty).mapPartitions(iterator => iterator.flatMap(t => {
             val key = t._1
             val leftIterator = t._2._1.toIterator
@@ -145,7 +148,13 @@ class KeyByRDD[K: ClassTag](input: RDD[(K, Array[Any])]) extends Serializable {
             val rightArray = t._2._2.head
             leftIterator.flatMap(left =>
                 rightArray.toIterator
-                    .map(right => (key, extractFields(left, right, extractIndices1, extractIndices2))))
+                    .map(right => {
+                        val extracted = extractFields(left, right, extractIndices1, extractIndices2)
+                        if (resultKeySelector == null)
+                            (key.asInstanceOf[T], extracted)
+                        else
+                            (resultKeySelector(left, right), extracted)
+                    }))
         }))
     }
 
@@ -159,11 +168,14 @@ class KeyByRDD[K: ClassTag](input: RDD[(K, Array[Any])]) extends Serializable {
      * @param func the function for comparison
      * @param extractIndices1 the indices that indicates which fields in current RDD will be preserved after enumeration
      * @param extractIndices2 the indices that indicates which fields in target RDD will be preserved after enumeration
-     * @tparam T the type of column in comparison
+     * @param resultKeySelector a function that extract key fields
+     * @tparam T the type of key fields after enumerate
+     * @tparam P the type of column in comparison
      * @return
      */
-    def enumerate[T](that: RDD[(K, Array[Array[Any]])], keyIndex1: Int, keyIndex2: Int, func: (T, T) => Boolean,
-                     extractIndices1: Array[Int], extractIndices2: Array[Int]): RDD[(K, Array[Any])] = {
+    def enumerateWithOneComparison[T,P](that: RDD[(K, Array[Array[Any]])], keyIndex1: Int, keyIndex2: Int, func: (P, P) => Boolean,
+                                        extractIndices1: Array[Int], extractIndices2: Array[Int],
+                                        resultKeySelector: (Array[Any], Array[Any]) => T = null): RDD[(T, Array[Any])] = {
         input.cogroup(that).filter(x => x._2._1.nonEmpty && x._2._2.nonEmpty).mapPartitions(iterator => iterator.flatMap(t => {
             val key = t._1
             val leftIterator = t._2._1.toIterator
@@ -171,8 +183,14 @@ class KeyByRDD[K: ClassTag](input: RDD[(K, Array[Any])]) extends Serializable {
             val rightArray = t._2._2.head
             leftIterator.flatMap(left =>
                 rightArray.toIterator.takeWhile(right =>
-                    func(left(keyIndex1).asInstanceOf[T], right(keyIndex2).asInstanceOf[T]))
-                    .map(right => (key, extractFields(left, right, extractIndices1, extractIndices2))))
+                    func(left(keyIndex1).asInstanceOf[P], right(keyIndex2).asInstanceOf[P]))
+                    .map(right => {
+                        val extracted = extractFields(left, right, extractIndices1, extractIndices2)
+                        if (resultKeySelector == null)
+                            (key.asInstanceOf[T], extracted)
+                        else
+                            (resultKeySelector(left, right), extracted)
+                    }))
         }))
     }
 
@@ -185,12 +203,15 @@ class KeyByRDD[K: ClassTag](input: RDD[(K, Array[Any])]) extends Serializable {
      * @param keyIndex2 the index of the column in the second comparison in the current RDD
      * @param extractIndices1 the indices that indicates which fields in current RDD will be preserved after enumeration
      * @param extractIndices2 the indices that indicates which fields in target RDD will be preserved after enumeration
+     * @param resultKeySelector a function that extract key fields
      * @tparam K1 the type of column in the first comparison
      * @tparam K2 the type of column in the second comparison
+     * @tparam T the type of key fields after enumerate
      * @return
      */
-    def enumerate[K1,K2](that: RDD[(K, TreeLikeArray[K1, K2])], keyIndex1: Int, keyIndex2: Int,
-                         extractIndices1: Array[Int], extractIndices2: Array[Int]): RDD[(K, Array[Any])] = {
+    def enumerateWithTwoComparisons[K1,K2,T](that: RDD[(K, TreeLikeArray[K1, K2])], keyIndex1: Int, keyIndex2: Int,
+                                             extractIndices1: Array[Int], extractIndices2: Array[Int],
+                                             resultKeySelector: (Array[Any], Array[Any]) => T = null): RDD[(T, Array[Any])] = {
         input.cogroup(that).filter(x => x._2._1.nonEmpty && x._2._2.nonEmpty).mapPartitions(iterator => iterator.flatMap(t => {
             val key = t._1
             val leftIterator = t._2._1.toIterator
@@ -198,7 +219,13 @@ class KeyByRDD[K: ClassTag](input: RDD[(K, Array[Any])]) extends Serializable {
             val rightTreeLikeArray = t._2._2.head
             leftIterator.flatMap(left =>
                 rightTreeLikeArray.enumerationIterator(left(keyIndex1).asInstanceOf[K1], left(keyIndex2).asInstanceOf[K2])
-                    .map(right => (key, extractFields(left, right, extractIndices1, extractIndices2))))
+                    .map(right => {
+                        val extracted = extractFields(left, right, extractIndices1, extractIndices2)
+                        if (resultKeySelector == null)
+                            (key.asInstanceOf[T], extracted)
+                        else
+                            (resultKeySelector(left, right), extracted)
+                    }))
         }))
     }
 

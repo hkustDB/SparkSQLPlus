@@ -1,6 +1,6 @@
 package sqlplus.codegen
 
-import sqlplus.compile.{AppendCommonExtraColumnAction, AppendComparisonExtraColumnAction, ApplySelfComparisonAction, ApplySemiJoinAction, CreateCommonExtraColumnAction, CreateComparisonExtraColumnAction, CreateComputationExtraColumnAction, CreateTransparentCommonExtraColumnAction, EndOfReductionAction, EnumerateAction, EnumerateWithOneComparisonAction, EnumerateWithTwoComparisonsAction, EnumerateWithoutComparisonAction, FinalOutputAction, ReduceAction, RelationInfo}
+import sqlplus.compile.{AppendCommonExtraColumnAction, AppendComparisonExtraColumnAction, ApplySelfComparisonAction, ApplySemiJoinAction, CreateCommonExtraColumnAction, CreateComparisonExtraColumnAction, CreateComputationExtraColumnAction, CreateTransparentCommonExtraColumnAction, EndOfReductionAction, EnumerateAction, EnumerateWithOneComparisonAction, EnumerateWithTwoComparisonsAction, EnumerateWithoutComparisonAction, ReduceAction, RelationInfo, RootPrepareEnumerationAction}
 import sqlplus.expression.{ComparisonOperator, Variable}
 import sqlplus.graph.{AggregatedRelation, AuxiliaryRelation, BagRelation, TableScanRelation}
 import sqlplus.plan.table.SqlPlusTable
@@ -47,11 +47,11 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
 
     override def getSuperClassParameters: List[String] = List()
 
-    override def generateBody(builder: StringBuilder): Unit = {
+    override def generateBody(builder: mutable.StringBuilder): Unit = {
         generateExecuteMethod(builder)
     }
 
-    private def generateExecuteMethod(builder: StringBuilder): Unit = {
+    private def generateExecuteMethod(builder: mutable.StringBuilder): Unit = {
         indent(builder, 1).append("def main(args: Array[String]): Unit = {").append("\n")
 
         generateSparkInit(builder)
@@ -76,7 +76,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         indent(builder, 1).append("}").append("\n")
     }
 
-    private def generateSparkInit(builder: StringBuilder): Unit = {
+    private def generateSparkInit(builder: mutable.StringBuilder): Unit = {
         indent(builder, 2).append("val conf = new SparkConf()").append("\n")
         indent(builder, 2).append("conf.setAppName(\"SparkSQLPlusExample\")").append("\n")
         indent(builder, 2).append("conf.setMaster(\"local\")").append("\n")
@@ -84,16 +84,16 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         indent(builder, 2).append("val sparkSession = SparkSession.builder.config(sc.getConf).getOrCreate()").append("\n")
     }
 
-    private def generateSparkClose(builder: StringBuilder): Unit = {
+    private def generateSparkClose(builder: mutable.StringBuilder): Unit = {
         indent(builder, 2).append("sparkSession.close()").append("\n")
     }
 
-    private def generateCompareFunctionDefinitions(builder: StringBuilder): Unit = {
+    private def generateCompareFunctionDefinitions(builder: mutable.StringBuilder): Unit = {
         for (op <- comparisonOperators)
             indent(builder, 2).append(op.getFuncDefinition()).append("\n")
     }
 
-    private def generateSourceTables(builder: StringBuilder): Unit = {
+    private def generateSourceTables(builder: mutable.StringBuilder): Unit = {
         for (table <- sourceTables) {
             assert(!sourceTableNameToVariableNameDict.contains(table.getTableName))
             val variableName = variableNameAssigner.getNewVariableName()
@@ -115,7 +115,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         }
     }
 
-    private def generateAggregatedSourceTables(builder: StringBuilder): Unit = {
+    private def generateAggregatedSourceTables(builder: mutable.StringBuilder): Unit = {
         for (relation <- aggregatedRelations) {
             relation.func match {
                 case "COUNT" =>
@@ -125,14 +125,15 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
                     indent(builder, 2).append("val ").append(variableName).append(" = ").append(fromVariableName)
                         .append(".map(fields => (").append(groupFields).append(", 1))")
                         .append(".reduceByKey(_ + _)")
-                        .append(".map(x => Array[Any](" + (0 to relation.group.length).map(i => "x._" + (i + 1)).mkString(", ") + "))").append("\n")
+                        .append(".map(x => Array[Any](" + (0 to relation.group.length).map(i => "x._" + (i + 1)).mkString(", ") + ")).persist()").append("\n")
+                    indent(builder, 2).append(variableName).append(".count()").append("\n")
                     aggregatedRelationIdToVariableNameDict(relation.getRelationId()) = variableName
                 case _ => throw new UnsupportedOperationException
             }
         }
     }
 
-    private def generateBagSourceTables(builder: StringBuilder): Unit = {
+    private def generateBagSourceTables(builder: mutable.StringBuilder): Unit = {
         for (bagRelation <- bagRelations) {
             // only support triangle
             assert(bagRelation.getInternalRelation.size == 3)
@@ -187,7 +188,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         }
     }
 
-    private def generateAuxiliarySourceTables(builder: StringBuilder): Unit = {
+    private def generateAuxiliarySourceTables(builder: mutable.StringBuilder): Unit = {
         for (relation <- auxiliaryRelations) {
             val sourceRelation = relation.sourceRelation
             sourceRelation match {
@@ -203,11 +204,12 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
                         .append(".map(").append(func).append(")").append("\n")
                     auxiliaryRelationIdToVariableNameDict(relation.getRelationId()) = variableName
                 case _ => throw new UnsupportedOperationException
+                // TODO: support non-full queries over bag relations
             }
         }
     }
 
-    private def generateReduction(builder: StringBuilder): Unit = {
+    private def generateReduction(builder: mutable.StringBuilder): Unit = {
         for (action <- reduceActions) {
             action match {
                 case createCommonExtraColumnAction: CreateCommonExtraColumnAction =>
@@ -232,7 +234,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         }
     }
 
-    def generateCreateCommonExtraColumnAction(builder: StringBuilder, action: CreateCommonExtraColumnAction): Unit = {
+    def generateCreateCommonExtraColumnAction(builder: mutable.StringBuilder, action: CreateCommonExtraColumnAction): Unit = {
         val relationId = action.relationId
         val extraColumnVariable = action.extraColumnVariable
         val joinKeyIndices = action.joinKeyIndices
@@ -253,7 +255,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         extraColumnVariableToVariableNameDict(extraColumnVariable) = extraColumnVariableName
     }
 
-    def generateCreateTransparentCommonExtraColumnAction(builder: StringBuilder, action: CreateTransparentCommonExtraColumnAction): Unit = {
+    def generateCreateTransparentCommonExtraColumnAction(builder: mutable.StringBuilder, action: CreateTransparentCommonExtraColumnAction): Unit = {
         val relationId = action.relationId
         val extraColumnVariable = action.extraColumnVariable
         val joinKeyIndices = action.joinKeyIndices
@@ -271,7 +273,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         extraColumnVariableToVariableNameDict(extraColumnVariable) = extraColumnVariableName
     }
 
-    def generateCreateComparisonExtraColumnAction(builder: StringBuilder, action: CreateComparisonExtraColumnAction): Unit = {
+    def generateCreateComparisonExtraColumnAction(builder: mutable.StringBuilder, action: CreateComparisonExtraColumnAction): Unit = {
         val relationId = action.relationId
         val extraColumnVariable = action.extraColumnVariable
         val joinKeyIndices = action.joinKeyIndices
@@ -296,7 +298,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         extraColumnVariableToVariableNameDict(extraColumnVariable) = extraColumnVariableName
     }
 
-    def generateCreateComputationExtraColumnAction(builder: StringBuilder, action: CreateComputationExtraColumnAction): Unit = {
+    def generateCreateComputationExtraColumnAction(builder: mutable.StringBuilder, action: CreateComputationExtraColumnAction): Unit = {
         val relationId = action.relationId
         val columnVariable = action.columnVariable
         val keyIndices = action.keyIndices
@@ -311,7 +313,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         activeRelationRecord.addKeyedVariableName(relationId, keyIndices, newVariableName)
     }
 
-    def generateAppendCommonExtraColumnAction(builder: StringBuilder, action: AppendCommonExtraColumnAction): Unit = {
+    def generateAppendCommonExtraColumnAction(builder: mutable.StringBuilder, action: AppendCommonExtraColumnAction): Unit = {
         val relationId = action.relationId
         val extraColumnVariable = action.extraColumnVariable
         val joinKeyIndices = action.joinKeyIndices
@@ -326,7 +328,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         activeRelationRecord.addKeyedVariableName(relationId, joinKeyIndices, newVariableName)
     }
 
-    def generateAppendComparisonExtraColumnAction(builder: StringBuilder, action: AppendComparisonExtraColumnAction): Unit = {
+    def generateAppendComparisonExtraColumnAction(builder: mutable.StringBuilder, action: AppendComparisonExtraColumnAction): Unit = {
         val relationId = action.relationId
         val extraColumnVariable = action.extraColumnVariable
         val joinKeyIndices = action.joinKeyIndices
@@ -345,7 +347,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         activeRelationRecord.addKeyedVariableName(relationId, joinKeyIndices, newVariableName)
     }
 
-    def generateApplySelfComparisonAction(builder: StringBuilder, action: ApplySelfComparisonAction): Unit = {
+    def generateApplySelfComparisonAction(builder: mutable.StringBuilder, action: ApplySelfComparisonAction): Unit = {
         val relationId = action.relationId
         val keyIndices = action.keyIndices
         val functionGenerator = action.functionGenerator
@@ -359,7 +361,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         activeRelationRecord.addKeyedVariableName(relationId, keyIndices, newVariableName)
     }
 
-    def generateApplySemiJoinAction(builder: StringBuilder, action: ApplySemiJoinAction): Unit = {
+    def generateApplySemiJoinAction(builder: mutable.StringBuilder, action: ApplySemiJoinAction): Unit = {
         val currentRelationId = action.currentRelationId
         val childRelationId = action.childRelationId
         val joinKeyIndicesInCurrent = action.joinKeyIndicesInCurrent
@@ -375,7 +377,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         activeRelationRecord.addKeyedVariableName(currentRelationId, joinKeyIndicesInCurrent, newVariableName)
     }
 
-    def getKeyedVariableNameByRelationId(builder: StringBuilder, relationId: Int, keyIndices: List[Int]): String = {
+    def getKeyedVariableNameByRelationId(builder: mutable.StringBuilder, relationId: Int, keyIndices: List[Int]): String = {
         if (activeRelationRecord.contains(relationId)) {
             val optKeyedVariableName = activeRelationRecord.getKeyedVariableNameWithKeys(relationId, keyIndices)
             if (optKeyedVariableName.nonEmpty) {
@@ -425,7 +427,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         activeRelationRecord.getKeyedVariableNameWithAnyKey(relationId).get
     }
 
-    def getGroupedVariableNameByRelationId(builder: StringBuilder, relationId: Int, keyIndices: List[Int]): String = {
+    def getGroupedVariableNameByRelationId(builder: mutable.StringBuilder, relationId: Int, keyIndices: List[Int]): String = {
         val optGroupedVariableName = activeRelationRecord.getGroupedVariableNameWithKeys(relationId, keyIndices)
         if (optGroupedVariableName.nonEmpty) {
             optGroupedVariableName.get
@@ -439,187 +441,151 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         }
     }
 
-    private def generateEnumeration(builder: StringBuilder): Unit = {
-        def processEnumerationActions(startVariableName: String, startKeyIndices: List[Int]): String = {
-            enumerateActions.foldLeft((startVariableName, startKeyIndices))((tuple, action) => {
-                val intermediateResultVariableName = tuple._1
-                val intermediateResultKeyIndices = tuple._2
-                action match {
-                    case enumerateWithoutComparisonAction: EnumerateWithoutComparisonAction =>
-                        generateEnumerateWithoutComparisonAction(builder, enumerateWithoutComparisonAction,
-                            intermediateResultVariableName, intermediateResultKeyIndices)
-                    case enumerateWithOneComparisonAction: EnumerateWithOneComparisonAction =>
-                        generateEnumerateWithOneComparisonAction(builder, enumerateWithOneComparisonAction,
-                            intermediateResultVariableName, intermediateResultKeyIndices)
-                    case enumerateWithTwoComparisonsAction: EnumerateWithTwoComparisonsAction =>
-                        generateEnumerateWithTwoComparisonsAction(builder, enumerateWithTwoComparisonsAction,
-                            intermediateResultVariableName, intermediateResultKeyIndices)
-                    case finalOutputAction: FinalOutputAction =>
-                        generateFinalOutputAction(builder, finalOutputAction, intermediateResultVariableName)
-                }
-            })._1
+    private def generateEnumeration(builder: mutable.StringBuilder): Unit = {
+        // the enumerateActions must be a RootPrepareEnumerationAction followed by 0 or more other EnumerationActions
+        assert(enumerateActions.head.isInstanceOf[RootPrepareEnumerationAction])
+
+        val intermediateVariableName = enumerateActions.head match {
+            case rootPrepareEnumerationAction: RootPrepareEnumerationAction =>
+                generateRootPrepareEnumerationAction(builder, rootPrepareEnumerationAction)
+            case _ => throw new RuntimeException("enumerateActions must be a RootPrepareEnumerationAction " +
+                "followed by 0 or more other EnumerationActions")
         }
+
+        val finalVariableName: String = enumerateActions.tail.foldLeft(intermediateVariableName)((v, ea) => {
+            ea match {
+                case enumerateWithoutComparisonAction: EnumerateWithoutComparisonAction =>
+                    generateEnumerateWithoutComparisonAction(builder, enumerateWithoutComparisonAction, v)
+                case enumerateWithOneComparisonAction: EnumerateWithOneComparisonAction =>
+                    generateEnumerateWithOneComparisonAction(builder, enumerateWithOneComparisonAction, v)
+                case enumerateWithTwoComparisonsAction: EnumerateWithTwoComparisonsAction =>
+                    generateEnumerateWithTwoComparisonsAction(builder, enumerateWithTwoComparisonsAction, v)
+                case _ =>
+                    throw new RuntimeException("enumerateActions must be a RootPrepareEnumerationAction " +
+                        "followed by 0 or more other EnumerationActions")
+            }
+        })
 
         def generateFinalCount(variableName: String): Unit = {
             indent(builder, 2).append(variableName).append(".count()").append("\n")
         }
 
-        val finalVariableName: String = enumerateActions.head match {
-            case enumerateWithoutComparisonAction: EnumerateWithoutComparisonAction =>
-                val startKeyIndices = enumerateWithoutComparisonAction.joinKeyIndicesInIntermediateResult
-                val startVariableName = getKeyedVariableNameByRelationId(builder, lastRelationId, startKeyIndices)
-                processEnumerationActions(startVariableName, startKeyIndices)
-            case enumerateWithOneComparisonAction: EnumerateWithOneComparisonAction =>
-                val startKeyIndices = enumerateWithOneComparisonAction.joinKeyIndicesInIntermediateResult
-                val startVariableName = getKeyedVariableNameByRelationId(builder, lastRelationId, startKeyIndices)
-                processEnumerationActions(startVariableName, startKeyIndices)
-            case enumerateWithTwoComparisonsAction: EnumerateWithTwoComparisonsAction =>
-                val startKeyIndices = enumerateWithTwoComparisonsAction.joinKeyIndicesInIntermediateResult
-                val startVariableName = getKeyedVariableNameByRelationId(builder, lastRelationId, startKeyIndices)
-                processEnumerationActions(startVariableName, startKeyIndices)
-            case finalOutputAction: FinalOutputAction => // no more EnumerationActions
-                val (variableName, _) = generateFinalOutputAction(builder, finalOutputAction, getKeyedVariableNameWithAnyKeyByRelationId(lastRelationId))
-                variableName
-        }
-
         generateFinalCount(finalVariableName)
     }
 
-    def generateEnumerateWithoutComparisonAction(builder: StringBuilder, action: EnumerateWithoutComparisonAction,
-                                                 intermediateResultVariableName: String, intermediateResultKeyIndices: List[Int]): (String, List[Int]) = {
+    def generateRootPrepareEnumerationAction(builder: mutable.StringBuilder, action: RootPrepareEnumerationAction): String = {
+        val relationId = action.relationId
+        val joinKeyIndices = action.joinKeyIndices
+        val extractIndicesInCurrent = action.extractIndicesInCurrent
+
+        if (joinKeyIndices.nonEmpty) {
+            val variableName = getKeyedVariableNameWithAnyKeyByRelationId(relationId)
+            val newVariableName = variableNameAssigner.getNewVariableName()
+            val keyByTuple = joinKeyIndices.map(i => s"t._2($i).asInstanceOf[Int]").mkString("(", ", ", ")")
+            val func = extractIndicesInCurrent.map(i => s"t._2($i)").mkString(s"t => ($keyByTuple, Array(", ", ", "))")
+            indent(builder, 2).append("val ").append(newVariableName).append(" = ")
+                .append(variableName).append(s".map($func)").append("\n")
+            newVariableName
+        } else {
+            // joinKeyIndices is empty only when the root relation is the only output relation and there is no more enumeration
+            // in this case, we simply return the variable name of the root relation
+            val variableName = getKeyedVariableNameWithAnyKeyByRelationId(relationId)
+            variableName
+        }
+    }
+
+    def generateEnumerateWithoutComparisonAction(builder: mutable.StringBuilder, action: EnumerateWithoutComparisonAction,
+                                                 intermediateResultVariableName: String): String = {
         val relationId = action.relationId
         val joinKeyIndicesInCurrent = action.joinKeyIndicesInCurrent
-        val joinKeyIndicesInIntermediateResult = action.joinKeyIndicesInIntermediateResult
         val extractIndicesInCurrent = action.extractIndicesInCurrent
         val extractIndicesInIntermediateResult = action.extractIndicesInIntermediateResult
+        val optResultKeyIsInIntermediateResultAndIndices = action.optResultKeyIsInIntermediateResultAndIndices
+        val resultKeySelector = getResultKeySelectorInEnumerations(optResultKeyIsInIntermediateResultAndIndices)
+            .map(s => s", $s").getOrElse("")
 
-        val variableName = reKeyIntermediateResultIfNeeded(builder, intermediateResultVariableName,
-            intermediateResultKeyIndices, joinKeyIndicesInIntermediateResult)
         val groupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndicesInCurrent)
         val newVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(newVariableName).append(" = ")
-            .append(variableName).append(".enumerate(")
+            .append(intermediateResultVariableName).append(".enumerateWithoutComparison(")
             .append(groupedVariableName).append(", ")
             .append(extractIndicesInIntermediateResult.mkString("Array(", ",", ")")).append(", ")
             .append(extractIndicesInCurrent.mkString("Array(", ",", ")"))
+            .append(resultKeySelector)
             .append(")").append("\n")
-        val newKeyIndices = getNewKeyIndexInIntermediateResult(extractIndicesInIntermediateResult, joinKeyIndicesInIntermediateResult)
-        (newVariableName, newKeyIndices)
+        newVariableName
     }
 
     def generateEnumerateWithOneComparisonAction(builder: StringBuilder, action: EnumerateWithOneComparisonAction,
-                                                 intermediateResultVariableName: String, intermediateResultKeyIndices: List[Int]): (String, List[Int]) = {
+                                                 intermediateResultVariableName: String): String = {
         val relationId = action.relationId
         val joinKeyIndicesInCurrent = action.joinKeyIndicesInCurrent
-        val joinKeyIndicesInIntermediateResult = action.joinKeyIndicesInIntermediateResult
         val compareKeyIndexInCurrent = action.compareKeyIndexInCurrent
         val compareKeyIndexInIntermediateResult = action.compareKeyIndexInIntermediateResult
         val func = action.func
         val extractIndicesInCurrent = action.extractIndicesInCurrent
         val extractIndicesInIntermediateResult = action.extractIndicesInIntermediateResult
+        val optResultKeyIsInIntermediateResultAndIndices = action.optResultKeyIsInIntermediateResultAndIndices
+        val resultKeySelector = getResultKeySelectorInEnumerations(optResultKeyIsInIntermediateResultAndIndices)
+            .map(s => s", $s").getOrElse("")
 
-        val variableName = reKeyIntermediateResultIfNeeded(builder, intermediateResultVariableName,
-            intermediateResultKeyIndices, joinKeyIndicesInIntermediateResult)
         val groupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndicesInCurrent)
         val newVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(newVariableName).append(" = ")
-            .append(variableName).append(".enumerate(")
+            .append(intermediateResultVariableName).append(".enumerateWithOneComparison(")
             .append(groupedVariableName).append(", ")
             .append(compareKeyIndexInIntermediateResult).append(", ")
             .append(compareKeyIndexInCurrent).append(", ")
             .append(func).append(", ")
             .append(extractIndicesInIntermediateResult.mkString("Array(", ",", ")")).append(", ")
             .append(extractIndicesInCurrent.mkString("Array(", ",", ")"))
+            .append(resultKeySelector)
             .append(")").append("\n")
-        val newKeyIndices = getNewKeyIndexInIntermediateResult(extractIndicesInIntermediateResult, joinKeyIndicesInIntermediateResult)
-        (newVariableName, newKeyIndices)
+        newVariableName
     }
 
     def generateEnumerateWithTwoComparisonsAction(builder: StringBuilder, action: EnumerateWithTwoComparisonsAction,
-                                                  intermediateResultVariableName: String, intermediateResultKeyIndices: List[Int]): (String, List[Int]) = {
+                                                  intermediateResultVariableName: String): String = {
         val relationId = action.relationId
         val joinKeyIndicesInCurrent = action.joinKeyIndicesInCurrent
-        val joinKeyIndicesInIntermediateResult = action.joinKeyIndicesInIntermediateResult
         val compareKeyIndexInIntermediateResult1 = action.compareKeyIndexInIntermediateResult1
         val compareKeyIndexInIntermediateResult2 = action.compareKeyIndexInIntermediateResult2
         val extractIndicesInCurrent = action.extractIndicesInCurrent
         val extractIndicesInIntermediateResult = action.extractIndicesInIntermediateResult
+        val optResultKeyIsInIntermediateResultAndIndices = action.optResultKeyIsInIntermediateResultAndIndices
+        val resultKeySelector = getResultKeySelectorInEnumerations(optResultKeyIsInIntermediateResultAndIndices)
+            .map(s => s", $s").getOrElse("")
 
-        val variableName = reKeyIntermediateResultIfNeeded(builder, intermediateResultVariableName,
-            intermediateResultKeyIndices, joinKeyIndicesInIntermediateResult)
         val groupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndicesInCurrent)
         val newVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(newVariableName).append(" = ")
-            .append(variableName).append(".enumerate(")
+            .append(intermediateResultVariableName).append(".enumerateWithTwoComparisons(")
             .append(groupedVariableName).append(", ")
             .append(compareKeyIndexInIntermediateResult1).append(", ")
             .append(compareKeyIndexInIntermediateResult2).append(", ")
             .append(extractIndicesInIntermediateResult.mkString("Array(", ",", ")")).append(", ")
             .append(extractIndicesInCurrent.mkString("Array(", ",", ")"))
+            .append(resultKeySelector)
             .append(")").append("\n")
-        val newKeyIndices = getNewKeyIndexInIntermediateResult(extractIndicesInIntermediateResult, joinKeyIndicesInIntermediateResult)
-        (newVariableName, newKeyIndices)
-    }
-
-    def generateFinalOutputAction(builder: StringBuilder, action: FinalOutputAction,
-                                  intermediateResultVariableName: String): (String, List[Int]) = {
-        val extracts = action.outputVariableIndices.map(i => s"t._2($i)")
-        val func = s"t => ${extracts.mkString("Array(", ", ", ")")}"
-        val newVariableName = variableNameAssigner.getNewVariableName()
-        indent(builder, 2).append("val ").append(newVariableName).append(" = ")
-            .append(intermediateResultVariableName).append(".map(").append(func).append(")").append("\n")
-        (newVariableName, List(0))
-    }
-
-    def reKeyIntermediateResultIfNeeded(builder: StringBuilder, intermediateResultVariableName: String,
-                                        intermediateResultKeyIndices: List[Int], expectedKeyIndices: List[Int]): String = {
-        if (intermediateResultKeyIndices == expectedKeyIndices) {
-            intermediateResultVariableName
-        } else {
-            val newVariableName = variableNameAssigner.getNewVariableName()
-            val func = expectedKeyIndices.map(i => s"x($i).asInstanceOf[Int]").mkString("x => (", ", ", ")")
-            indent(builder, 2).append("val ").append(newVariableName).append(" = ")
-                .append(intermediateResultVariableName).append(".reKeyBy(")
-                .append(func).append(")").append("\n")
-            newVariableName
-        }
-    }
-
-    /**
-     * Get the new key index. The key index may change due to the extractIndices are not full.
-     * e.g., assuming the intermediate result has columns [var1, var2, var3, var4],
-     * the key index of intermediate result is 2. So each row looks like (var3, (var1, var2, var3, var4))
-     * Suppose the extractIndices for intermediate result is Array(0,2,3),
-     * then var2 is not in the new intermediate result but the key is still var3.
-     * Now the new key index is 1 since the new intermediate result has columns [var1, var3, var4, var*...]
-     *
-     * case 1: if the key column is preserved after the extraction,
-     * The new key index can be calculated by counting the indices in extractIndices that is strictly smaller than
-     * the original key index. Here only index = 1 satisfy (i less than 2), so the new key index is 1. This approach comes the
-     * fact that the indices must be in an ascending order.
-     *
-     * case 2: if the key column is dropped after the extraction,
-     * The new key index will be set to -1 to indicate that the key is no longer in the content.
-     *
-     * @param extractIndices
-     * @param keyIndices
-     * @return
-     */
-    def getNewKeyIndexInIntermediateResult(extractIndices: List[Int], keyIndices: List[Int]): List[Int] = {
-        def fun(keyIndex: Int): Int = {
-            if (extractIndices.contains(keyIndex))
-                extractIndices.takeWhile(i => i < keyIndex).size
-            else
-                -1
-        }
-
-        keyIndices.map(fun)
+        newVariableName
     }
 
     // TODO: replace with a type component
     def getFieldTypeConvertor(f: String, t: String): String = t match {
         case "INTEGER" | "INT" => f + ".toInt"
         case _ => throw new UnsupportedOperationException
+    }
+
+    def getResultKeySelectorInEnumerations(optResultKeyIsInIntermediateResultAndIndices: Option[List[(Boolean, Int)]]): Option[String] = {
+        optResultKeyIsInIntermediateResultAndIndices.map(list => {
+            val fields = list.map(t => {
+                // t._1 indicates whether this index is in the intermediate result
+                if (t._1) s"l(${t._2}).asInstanceOf[Int]" else s"r(${t._2}).asInstanceOf[Int]"
+            })
+
+            val selector = fields.mkString("(l, r) => (", ", ", ")")
+            selector
+        })
     }
 }
 

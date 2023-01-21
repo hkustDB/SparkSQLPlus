@@ -61,7 +61,7 @@ object Query3SparkSQL {
 
 
         val resultDF = spark.sql(
-            "SELECT g1.src, g1.dst, g2.dst, g3.dst, c1.cnt, c2.cnt From Graph g1, Graph g2, Graph g3, " +
+            "SELECT g1.src, g1.dst, g2.dst, g3.dst, c1.cnt, c2.cnt, c3.cnt, c4.cnt From Graph g1, Graph g2, Graph g3, " +
                 "countDF c1, countDF c2, countDF c3, countIDF c4 " +
                 "where g1.dst = g2.src and g2.dst = g3.src and c1.src = g1.src and c2.src = g3.dst and c3.src = g2.src " +
                 s"and c4.dst = g3.dst and c1.cnt < c2.cnt and c3.cnt < c4.cnt")
