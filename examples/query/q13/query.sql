@@ -1,4 +1,0 @@
-SELECT R1.x1 AS x1, R1.x2 AS x2, R3.x3 AS x3, R3.x4 AS x4, R2.x7 AS x7
-FROM R1, R2, R3, R4, R5
-WHERE R1.x2 = R2.x2 AND R2.x2 = R3.x2 AND R2.x3 = R3.x3 AND R3.x3 = R4.x3 AND R4.x3 = R5.x3
-AND R2.x2 < R5.x8
