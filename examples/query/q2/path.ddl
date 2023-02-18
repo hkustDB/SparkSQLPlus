@@ -1,7 +1,6 @@
 Create table Graph (
     src INT,
-    dst INT,
-    weight INT
+    dst INT
 ) WITH (
     'path' = 'examples/data/path.dat'
 )

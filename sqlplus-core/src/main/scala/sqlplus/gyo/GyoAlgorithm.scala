@@ -1,8 +1,9 @@
 package sqlplus.gyo
 
 import sqlplus.expression.Variable
+import sqlplus.ghd.GhdAlgorithm
 import sqlplus.{graph, gyo}
-import sqlplus.graph.{AggregatedRelation, AuxiliaryRelation, BagRelation, JoinTree, JoinTreeEdge, Relation, RelationalHyperGraph}
+import sqlplus.graph.{AuxiliaryRelation, JoinTree, JoinTreeEdge, Relation, RelationalHyperGraph}
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -211,44 +212,7 @@ class GyoAlgorithm {
     }
 
     private def decompose(hyperGraph: RelationalHyperGraph): RelationalHyperGraph = {
-        val edges = hyperGraph.getEdges()
-        // currently, only support graph(src, dst)
-//        assert(edges.forall(r => r.getNodes().size == 2))
-
-        var relationToVariableDict: Map[Relation, Set[Variable]] = edges.map(r => (r, r.getNodes())).toMap
-        var variableToRelationDict: Map[Variable, Set[Relation]] = edges.flatMap(r => r.getNodes().map(v => (v, r))).groupBy(t => t._1).map(t => (t._1, t._2.map(_._2)))
-
-        def detect(from: Relation): Option[List[Relation]] = {
-            val result = for {
-                var1 <- relationToVariableDict.getOrElse(from, Set())
-                relation2 <- variableToRelationDict(var1)
-                if (relation2 != from)
-                var2 <- relationToVariableDict.getOrElse(relation2, Set())
-                relation3 <- variableToRelationDict(var2)
-                if (relation3 != relation2 && relation3 != from)
-                var3 <- relationToVariableDict.getOrElse(relation3, Set())
-                relation4 <- variableToRelationDict(var3)
-                if (relation4 == from)
-            } yield List(from, relation2, relation3)
-
-            result.headOption
-        }
-
-        var currentHypergraph = hyperGraph
-        for (relation <- edges) {
-            val opt = detect(relation)
-            if (opt.nonEmpty && opt.get.forall(r => !r.isInstanceOf[BagRelation])) {
-                currentHypergraph = opt.get
-                    .foldLeft(currentHypergraph)((hg, r) => hg.removeHyperEdge(r))
-                    .addHyperEdge(BagRelation.createFrom(opt.get.toSet))
-
-                opt.get.foreach(r => {
-                    relationToVariableDict = relationToVariableDict - r
-                    r.getNodes().foreach(v => variableToRelationDict = variableToRelationDict.updated(v, variableToRelationDict(v) - r))
-                })
-            }
-        }
-
-        currentHypergraph
+        val algorithm = new GhdAlgorithm
+        algorithm.run(hyperGraph)
     }
 }

@@ -18,18 +18,16 @@ object Query2SparkSQL {
         val lines = sc.textFile(s"${args.head}/graph.dat")
         val graph = lines.map(line => {
             val temp = line.split(",")
-            (temp(0).toInt, temp(1).toInt, temp(2).toInt)
+            (temp(0).toInt, temp(1).toInt)
         })
         graph.cache()
 
-
-        val graphSchemaString = "src dst weight"
+        val graphSchemaString = "src dst"
         val graphFields = graphSchemaString.split(" ")
             .map(fieldName => StructField(fieldName, IntegerType, nullable = false))
         val graphSchema = StructType(graphFields)
 
-
-        val graphRow = graph.map(attributes => Row(attributes._1, attributes._2, attributes._3))
+        val graphRow = graph.map(attributes => Row(attributes._1, attributes._2))
 
         val graphDF = spark.createDataFrame(graphRow, graphSchema)
 
@@ -37,13 +35,12 @@ object Query2SparkSQL {
 
         graphDF.persist()
 
-
         val resultDF = spark.sql(
             "SELECT * " +
                 "From Graph g1, Graph g2, Graph g3, Graph g4, Graph g5, Graph g6, Graph g7 " +
                 "where g1.src = g3.dst and g2.src = g1.dst and g3.src=g2.dst " +
                 "and g4.src = g6.dst and g5.src = g4.dst and g6.src = g5.dst " +
-                s"and g1.dst = g7.src and g4.src = g7.dst and g1.weight+g2.weight+g3.weight < g4.weight+g5.weight+g6.weight")
+                s"and g1.dst = g7.src and g4.src = g7.dst and g1.src+g2.src+g3.src < g4.src+g5.src+g6.src")
 
         val ts1 = System.currentTimeMillis()
         val resultCnt = resultDF.count()

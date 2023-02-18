@@ -300,7 +300,6 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
         val leftVariables = comparisonInfo.getLeft().getVariables()
         val rightVariables = comparisonInfo.getRight().getVariables()
         if (leftVariables.subsetOf(currentVariables)) {
-            assert(rightVariables.intersect(currentVariables).isEmpty)
             comparisonInfo.getLeft() match {
                 case SingleVariableExpression(variable) =>
                     (comparisonInfo.getLeft(), variable, true)
