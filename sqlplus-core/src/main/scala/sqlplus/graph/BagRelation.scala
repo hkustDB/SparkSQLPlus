@@ -13,7 +13,7 @@ class BagRelation(bag: Set[Relation]) extends Relation {
 
     override def getVariableList(): List[Variable] = variableList
 
-    def getInternalRelation: List[Relation] = inside
+    def getInternalRelations: List[Relation] = inside
 }
 
 object BagRelation {

@@ -1,7 +1,9 @@
 package sqlplus.helper
 
+import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import sqlplus.cqc.{ComparisonJoins, TreeLikeArray}
+import sqlplus.wcoj.LeapfrogTrieJoinIterator
 
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
@@ -24,24 +26,7 @@ object ImplicitConversions {
 
     implicit def convertRDDToKeyByRDD[K: ClassTag](input: RDD[(K, Array[Any])]): KeyByRDD[K] = new KeyByRDD[K](input)
 
-    def bag(rdd1: RDD[Array[Any]], keySelector1: Array[Any] => Product,
-            rdd2: RDD[Array[Any]], keySelector2: Array[Any] => Product,
-            keySelector12: Array[Any] => Product,
-            rdd3: RDD[Array[Any]], keySelector3: Array[Any] => Product,
-            finalIndices: Array[Int]
-           ): RDD[Array[Any]] = {
-        val keyedRdd1 = rdd1.keyBy(row => keySelector1(row))
-        val keyedRdd2 = rdd2.keyBy(row => keySelector2(row))
-        val keyedRdd1x2 = keyedRdd1.join(keyedRdd2).map(t => t._2._1 ++ t._2._2).keyBy(row => keySelector12(row))
-        val keyedRdd3 = rdd3.keyBy(row => keySelector3(row))
-
-        val finalRdd = keyedRdd1x2.join(keyedRdd3).map(t => {
-            val total = t._2._1 ++ t._2._2
-            finalIndices.map(i => total(i))
-        })
-
-        finalRdd
-    }
+    implicit def convertSparkContextToLeapfrogTrieJoinAlgorithm(sc: SparkContext) = new LeapfrogTrieJoinAlgorithm(sc)
 }
 
 /**
@@ -309,4 +294,65 @@ class GroupByTreeLikeArrayRDD[K: ClassTag,K1,K2](input: RDD[(K, TreeLikeArray[K1
      */
     def createDictionary(): RDD[(K, Array[(K1, K2)])] =
         input.mapValues(value => value.toSmall)
+}
+
+class LeapfrogTrieJoinAlgorithm(sc: SparkContext) {
+    def lftj(rdds: Array[RDD[Array[Int]]], relationCount: Int,  variableCount: Int,
+             rddIndexToRelations: Array[Array[Int]], relationVariableRedirects: Array[Array[(Int, Int)]],
+             relationVariableIndices: Array[Array[Int]]): RDD[Array[Any]] = {
+        // TODO: broadcast vs cogroup
+        val broadcasts = rdds.map(rdd => {
+            sc.broadcast(rdd.collect())
+        })
+
+        val parallelism = sc.defaultParallelism
+        // TODO: support parallelisms which are not a cube number
+        val p = Math.cbrt(parallelism).toInt
+        val hypercubeConfiguration = Array(p,p,p)
+
+        val variableRelatedRelationBuffers = Array.fill(variableCount)(ArrayBuffer.empty[Int])
+        for (t <- relationVariableRedirects.zipWithIndex) {
+            val redirects = t._1
+            val relationIndex = t._2
+            for (redirect <- redirects)
+                variableRelatedRelationBuffers(redirect._2).append(relationIndex)
+        }
+        val variableRelatedRelations = variableRelatedRelationBuffers.map(b => b.sorted.toArray)
+
+        def getPartitionLocations(partition: Int): Array[Int] = {
+            var remain = partition
+            val base = hypercubeConfiguration.tail.foldRight(List(1))((size, list) => (list.head * size) :: list)
+            val result = Array.fill(hypercubeConfiguration.length)(0)
+            for (i <- hypercubeConfiguration.indices) {
+                result(i) = remain / base(i)
+                remain = remain % base(i)
+            }
+            result
+        }
+
+        def compute(partition: Int, iterator: Iterator[Int]): Iterator[Array[Any]] = {
+            val locations = getPartitionLocations(partition)
+            val relations = Array.fill(relationCount)(ArrayBuffer.empty[Array[Int]])
+            broadcasts.zip(rddIndexToRelations).foreach(t => {
+                val broadcast = t._1
+                val relationIndices = t._2
+                val content = broadcast.value
+                for (tuple <- content) {
+                    for (relationIndex <- relationIndices) {
+                        if (relationVariableRedirects(relationIndex).forall(redirect =>
+                            tuple(redirect._1) % hypercubeConfiguration(redirect._2) == locations(redirect._2))) {
+                            // TODO: no need to create a new array if all fields are needed in order
+                            relations(relationIndex).append(relationVariableIndices(relationIndex).map(i => tuple(i)))
+                        }
+                    }
+                }
+            })
+
+            val iterator = new LeapfrogTrieJoinIterator(relations.map(b => b), variableRelatedRelations)
+            iterator.init()
+            iterator
+        }
+
+        sc.parallelize(0 until parallelism, parallelism).mapPartitionsWithIndex(compute)
+    }
 }

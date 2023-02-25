@@ -4,8 +4,10 @@ import sqlplus.compile.{AppendCommonExtraColumnAction, AppendComparisonExtraColu
 import sqlplus.expression.{ComparisonOperator, Variable}
 import sqlplus.graph.{AggregatedRelation, AuxiliaryRelation, BagRelation, TableScanRelation}
 import sqlplus.plan.table.SqlPlusTable
+import sqlplus.types.IntDataType
 
 import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 
 class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], val sourceTables: Set[SqlPlusTable],
                               val aggregatedRelations: List[AggregatedRelation], val auxiliaryRelations: List[AuxiliaryRelation],
@@ -18,6 +20,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
     val aggregatedRelationIdToVariableNameDict = new mutable.HashMap[Int, String]()
     val auxiliaryRelationIdToVariableNameDict = new mutable.HashMap[Int, String]()
     val bagRelationIdToVariableNameDict = new mutable.HashMap[Int, String]()
+    val convertedSourceTableNameToVariableNameDict = new mutable.HashMap[String, String]()
 
     val extraColumnVariableToVariableNameDict = new mutable.HashMap[Variable, String]()
 
@@ -61,8 +64,11 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         newLine(builder)
 
         generateSourceTables(builder)
+        newLine(builder)
         generateAggregatedSourceTables(builder)
+        newLine(builder)
         generateBagSourceTables(builder)
+        newLine(builder)
         generateAuxiliarySourceTables(builder)
         newLine(builder)
 
@@ -135,54 +141,87 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
 
     private def generateBagSourceTables(builder: mutable.StringBuilder): Unit = {
         for (bagRelation <- bagRelations) {
-            // only support triangle
-            assert(bagRelation.getInternalRelation.size == 3)
+            // TODO: support not only triangle
+            assert(bagRelation.getInternalRelations.size == 3)
             // should not put AuxiliaryRelation in BagRelation
-            assert(bagRelation.getInternalRelation.forall(r => !r.isInstanceOf[AuxiliaryRelation]))
+            assert(bagRelation.getInternalRelations.forall(r => !r.isInstanceOf[AuxiliaryRelation]))
             // only support normal tables
-            assert(bagRelation.getInternalRelation.forall(r => r.isInstanceOf[TableScanRelation]))
-            val relation1 = bagRelation.getInternalRelation(0)
-            val relation2 = bagRelation.getInternalRelation(1)
-            val relation3 = bagRelation.getInternalRelation(2)
-            // join relation1 and relation2
-            val variableList1 = relation1.getVariableList()
-            val variableList2 = relation2.getVariableList()
-            val variableList3 = relation3.getVariableList()
-            // keep all the variables
-            val variableList12 = variableList1 ++ variableList2
-            val variableList123 = variableList1 ++ variableList2 ++ variableList3
+            assert(bagRelation.getInternalRelations.forall(r => r.isInstanceOf[TableScanRelation]))
+            // currently all columns must be INT type
+            assert(bagRelation.getInternalRelations.forall(r => r.getVariableList().forall(v => v.dataType == IntDataType)))
 
-            val joinVariables12 = variableList1.toSet.intersect(variableList2.toSet).toList.sortBy(v => v.name)
-            val joinVariables123 = variableList12.toSet.intersect(variableList3.toSet).toList.sortBy(v => v.name)
+            // currently, the input relations to LFTJ must be Array[Int]
+            // can be removed if we support arbitrary types
+            for (internalRelation <- bagRelation.getInternalRelations) {
+                val tableName = internalRelation.asInstanceOf[TableScanRelation].tableName
+                if (convertedSourceTableNameToVariableNameDict.contains(tableName)) {
+                    convertedSourceTableNameToVariableNameDict(tableName)
+                } else {
+                    val sourceVariableName = sourceTableNameToVariableNameDict(tableName)
+                    val size = internalRelation.getVariableList().size
+                    val createArray = (0 until size).map(i => s"fields($i).asInstanceOf[Int]").mkString("fields => Array(", ",", ")")
+                    val convertedVariableName = variableNameAssigner.getNewVariableName()
+                    indent(builder, 2).append("val ").append(convertedVariableName).append(" = ").append(sourceVariableName)
+                        .append(".map(").append(createArray).append(").cache()").append("\n")
+                    newLine(builder)
+                    indent(builder, 2).append(convertedVariableName).append(".count()").append("\n")
 
-            val variableIndicesDict1 = relation1.getVariableList().zipWithIndex.toMap
-            val variableIndicesDict2 = relation2.getVariableList().zipWithIndex.toMap
-            val variableIndicesDict3 = relation3.getVariableList().zipWithIndex.toMap
-            val variableIndicesDict12 = variableList12.zipWithIndex.toMap
-            val variableIndicesDict123 = variableList123.zipWithIndex.toMap
+                    convertedSourceTableNameToVariableNameDict(tableName) = convertedVariableName
+                }
+            }
 
-            val joinIndices1 = joinVariables12.map(v => variableIndicesDict1(v))
-            val joinIndices2 = joinVariables12.map(v => variableIndicesDict2(v))
-            val joinIndices12 = joinVariables123.map(v => variableIndicesDict12(v))
-            val joinIndices3 = joinVariables123.map(v => variableIndicesDict3(v))
+            // generate lftj calls
+            val involvedVariables = bagRelation.getInternalRelations.flatMap(r => r.getVariableList()).distinct.sortBy(v => v.name)
+            val involvedVariableToIndexDict = involvedVariables.map(v => v.name).zipWithIndex.toMap
+            val sortedRelations = bagRelation.getInternalRelations.sortBy(r => r.getRelationId())
+            val relationIdToIndexDict = sortedRelations.map(r => r.getRelationId()).zipWithIndex.toMap
+            val groups = bagRelation.getInternalRelations.groupBy(r => r.asInstanceOf[TableScanRelation].tableName)
+                .mapValues(l => l.sortBy(r => relationIdToIndexDict(r.getRelationId())))
+            val sourceTableNames = groups.keys.toList
 
-            val variableName1 = sourceTableNameToVariableNameDict(relation1.asInstanceOf[TableScanRelation].tableName)
-            val keyByFunc1 = if (joinIndices1.size == 1) s"x => Tuple1(x(${joinIndices1.head}))"
-                else joinIndices1.map(i => s"x($i).asInstanceOf[Int]").mkString("x => (", ", ", ")")
-            val variableName2 = sourceTableNameToVariableNameDict(relation2.asInstanceOf[TableScanRelation].tableName)
-            val keyByFunc2 = if (joinIndices2.size == 1) s"x => Tuple1(x(${joinIndices2.head}))"
-                else joinIndices2.map(i => s"x($i).asInstanceOf[Int]").mkString("x => (", ", ", ")")
-            val keyByFunc12 = if (joinIndices12.size == 1) s"x => Tuple1(x(${joinIndices12.head}))"
-                else joinIndices12.map(i => s"x($i).asInstanceOf[Int]").mkString("x => (", ", ", ")")
+            // argument 1
+            val sourceTableVariableNames = sourceTableNames.map(n => convertedSourceTableNameToVariableNameDict(n)).mkString("Array(", ",", ")")
 
-            val variableName3 = sourceTableNameToVariableNameDict(relation2.asInstanceOf[TableScanRelation].tableName)
-            val keyByFunc3 = if (joinIndices3.size == 1) s"x => Tuple1(x(${joinIndices3.head}))"
-                else joinIndices3.map(i => s"x($i).asInstanceOf[Int]").mkString("x => (", ", ", ")")
+            // argument 2
+            val relationCount = bagRelation.getInternalRelations.size
+
+            // argument 3
+            val variableCount = involvedVariables.size
+
+            // argument 4
+            val sourceTableIndexToRelations = sourceTableNames.indices.map(i => {
+                val sourceTableName = sourceTableNames(i)
+                val group = groups(sourceTableName)
+                val relationIndices = group.map(r => relationIdToIndexDict(r.getRelationId()))
+                relationIndices.mkString("Array(", ",", ")")
+            }).mkString("Array(", ",", ")")
+
+            // argument 5&6
+            val redirectBuffer = ListBuffer.empty[String]
+            val variableIndicesBuffer = ListBuffer.empty[String]
+            for (relation <- sortedRelations) {
+                val redirect = relation.getVariableList().zipWithIndex.map(t => (t._2, involvedVariableToIndexDict(t._1.name)))
+                    .map(t => s"(${t._1},${t._2})").mkString("Array(", ",", ")")
+                redirectBuffer.append(redirect)
+
+                // build the own view of this relation. e.g., in the view of relation S(C,A), the source table schema is (C,A)
+                // however, assuming the total order of variables is A,B,C, the tuples of S should be arrange in order (A,C)
+                val view = relation.getVariableList().map(v => v.name).zipWithIndex.toMap
+                val variableIndices = relation.getVariableList().map(v => v.name)
+                    .sortBy(involvedVariableToIndexDict).map(view).mkString("Array(", ",", ")")
+                variableIndicesBuffer.append(variableIndices)
+            }
+            val redirects = redirectBuffer.mkString("Array(", ",", ")")
+            val variableIndices = variableIndicesBuffer.mkString("Array(", ",", ")")
+
             val bagVariableName = variableNameAssigner.getNewVariableName()
-            val resultIndices = bagRelation.getVariableList().map(v => variableIndicesDict123(v)).mkString("Array(", ",", ")")
-            indent(builder, 2).append("val ").append(bagVariableName).append(" = bag(")
-                .append(s"$variableName1, $keyByFunc1, $variableName2, $keyByFunc2, $keyByFunc12, $variableName3, $keyByFunc3, $resultIndices)")
-                .append("\n")
+            indent(builder, 2).append("val ").append(bagVariableName).append(" = sc.lftj(")
+                .append(sourceTableVariableNames).append(", ")
+                .append(relationCount).append(", ")
+                .append(variableCount).append(", ").append("\n")
+            indent(builder, 4).append(sourceTableIndexToRelations).append(", ").append("\n")
+            indent(builder, 4).append(redirects).append(", ").append("\n")
+            indent(builder, 4).append(variableIndices).append(").cache()").append("\n")
 
             bagRelationIdToVariableNameDict(bagRelation.getRelationId()) = bagVariableName
         }

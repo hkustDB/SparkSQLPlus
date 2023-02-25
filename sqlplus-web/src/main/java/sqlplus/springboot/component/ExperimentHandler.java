@@ -33,6 +33,9 @@ public class ExperimentHandler {
     @Value("${experiment.spark.executor.cores:2}")
     public String executorCores;
 
+    @Value("${experiment.spark.default.parallelism:1}")
+    public String parallelism;
+
     @Value("${experiment.example-jar}")
     private String exampleJarPath;
 
@@ -75,6 +78,7 @@ public class ExperimentHandler {
         request.addSparkProperty("spark.driver.cores", driverCores);
         request.addSparkProperty("spark.executor.memory", executorMemory);
         request.addSparkProperty("spark.executor.cores", executorCores);
+        request.addSparkProperty("spark.default.parallelism", parallelism);
         request.addSparkProperty("spark.eventLog.enabled", "false");
         request.addSparkProperty("spark.submit.deployMode", "cluster");
         request.addSparkProperty("spark.driver.supervise", "false");

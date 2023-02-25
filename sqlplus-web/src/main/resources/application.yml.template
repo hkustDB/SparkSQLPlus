@@ -17,6 +17,8 @@ experiment:
     executor:
       memory: 4g
       cores: 1
+    default:
+      parallelism: 1
   timeout: 300
   example-jar: sqlplus-example/target/sparksql-plus-example.jar
   lib-jar: sqlplus-lib/target/sparksql-plus-lib.jar

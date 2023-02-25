@@ -12,28 +12,17 @@ object Query2SparkSQL {
         val conf = new SparkConf()
         conf.setAppName("Query2SparkSQL")
         val sc = new SparkContext(conf)
-
         val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
+        val schema = "src INT, dst INT"
 
-        val lines = sc.textFile(s"${args.head}/graph.dat")
-        val graph = lines.map(line => {
-            val temp = line.split(",")
-            (temp(0).toInt, temp(1).toInt)
-        })
-        graph.cache()
-
-        val graphSchemaString = "src dst"
-        val graphFields = graphSchemaString.split(" ")
-            .map(fieldName => StructField(fieldName, IntegerType, nullable = false))
-        val graphSchema = StructType(graphFields)
-
-        val graphRow = graph.map(attributes => Row(attributes._1, attributes._2))
-
-        val graphDF = spark.createDataFrame(graphRow, graphSchema)
-
-        graphDF.createOrReplaceTempView("Graph")
-
-        graphDF.persist()
+        val df = spark.read.format("csv")
+            .option("delimiter", ",").option("quote", "")
+            .option("header", "false")
+            .schema(schema)
+            .load(s"${args.head}/graph.dat")
+        df.persist()
+        df.count()
+        df.createOrReplaceTempView("Graph")
 
         val resultDF = spark.sql(
             "SELECT * " +
