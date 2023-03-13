@@ -68,7 +68,7 @@ public class CliFrontend {
             ConvertResult convertResult = converter.convert(logicalPlan);
 
             SqlPlusCompiler sqlPlusCompiler = new SqlPlusCompiler(variableManager);
-            String code = sqlPlusCompiler.compile(catalogManager, convertResult, packageName, objectName);
+            String code = sqlPlusCompiler.compile(catalogManager, convertResult, packageName, objectName, true);
 
             FileUtils.writeStringToFile(new File(outputPath), code);
         }

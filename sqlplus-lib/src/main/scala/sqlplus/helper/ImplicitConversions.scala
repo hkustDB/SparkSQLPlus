@@ -5,6 +5,9 @@ import org.apache.spark.rdd.RDD
 import sqlplus.cqc.{ComparisonJoins, TreeLikeArray}
 import sqlplus.wcoj.LeapfrogTrieJoinIterator
 
+import java.time.format.DateTimeFormatter
+import java.time.{Instant, LocalDateTime, ZoneId, ZoneOffset}
+import java.util.regex.Pattern
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
 
@@ -27,6 +30,12 @@ object ImplicitConversions {
     implicit def convertRDDToKeyByRDD[K: ClassTag](input: RDD[(K, Array[Any])]): KeyByRDD[K] = new KeyByRDD[K](input)
 
     implicit def convertSparkContextToLeapfrogTrieJoinAlgorithm(sc: SparkContext) = new LeapfrogTrieJoinAlgorithm(sc)
+
+    implicit def convertStringToTimestampParser(s: String) = new TimestampFormatter.parser(s)
+
+    implicit def convertTimestampToTimestampPrinter(ts: Long) = new TimestampFormatter.printer(ts)
+
+    implicit def convertStringToRegexPattern(r: String) = new RegexPattern(r)
 }
 
 /**
@@ -214,6 +223,28 @@ class KeyByRDD[K: ClassTag](input: RDD[(K, Array[Any])]) extends Serializable {
         }))
     }
 
+    def enumerateWithMoreThanTwoComparisons[T, P](that: RDD[(K, Array[Array[Any]])], keyIndex1: Int, keyIndex2: Int, func: (P, P) => Boolean,
+                                                  extraFilter: (Array[Any], Array[Any]) => Boolean,
+                                                  extractIndices1: Array[Int], extractIndices2: Array[Int],
+                                                  resultKeySelector: (Array[Any], Array[Any]) => T = null): RDD[(T, Array[Any])] = {
+        input.cogroup(that).filter(x => x._2._1.nonEmpty && x._2._2.nonEmpty).mapPartitions(iterator => iterator.flatMap(t => {
+            val key = t._1
+            val leftIterator = t._2._1.toIterator
+            assert(t._2._2.size == 1)
+            val rightArray = t._2._2.head
+            leftIterator.flatMap(left =>
+                rightArray.toIterator.takeWhile(right =>
+                    func(left(keyIndex1).asInstanceOf[P], right(keyIndex2).asInstanceOf[P])).filter(right => extraFilter(left, right))
+                    .map(right => {
+                        val extracted = extractFields(left, right, extractIndices1, extractIndices2)
+                        if (resultKeySelector == null)
+                            (key.asInstanceOf[T], extracted)
+                        else
+                            (resultKeySelector(left, right), extracted)
+                    }))
+        }))
+    }
+
     private def extractFields(array1: Array[Any], array2: Array[Any], indices1: Array[Int], indices2: Array[Int]): Array[Any] = {
         val buffer = Array.ofDim[Any](indices1.length + indices2.length)
         var current = 0
@@ -355,4 +386,20 @@ class LeapfrogTrieJoinAlgorithm(sc: SparkContext) {
 
         sc.parallelize(0 until parallelism, parallelism).mapPartitionsWithIndex(compute)
     }
+}
+
+object TimestampFormatter {
+    val DATE_TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss[.SSS]")
+
+    class parser(s: String) {
+        def parseToTimestamp: Long = LocalDateTime.parse(s, DATE_TIME_FORMATTER).atZone(ZoneOffset.UTC).toInstant.toEpochMilli
+    }
+
+    class printer(ts: Long) {
+        def printAsString: String = DATE_TIME_FORMATTER.format(LocalDateTime.ofInstant(Instant.ofEpochMilli(ts), ZoneId.of("UTC")))
+    }
+}
+
+class RegexPattern(r: String) {
+    def toPattern: Pattern = Pattern.compile(r)
 }

@@ -5,7 +5,7 @@ import sqlplus.types.DataType
 class VariableManager {
     private var suffix: Int = 0
 
-    def getNewVariable(dataType: DataType[_]): Variable = {
+    def getNewVariable(dataType: DataType): Variable = {
         suffix += 1
         Variable(s"v${suffix}", dataType)
     }

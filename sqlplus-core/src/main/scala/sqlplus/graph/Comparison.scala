@@ -1,6 +1,6 @@
 package sqlplus.graph
 
-import sqlplus.expression.{ComparisonOperator, Expression}
+import sqlplus.expression.{Operator, Expression}
 
 /**
  * A comparison is a set of joinTreeEdge with a ComparisonOperator and 2 expressions.
@@ -10,7 +10,7 @@ import sqlplus.expression.{ComparisonOperator, Expression}
  * @param left the left expression
  * @param right the right expression
  */
-class Comparison(val nodes: Set[JoinTreeEdge], val op: ComparisonOperator, val left: Expression, val right: Expression) extends HyperEdge[JoinTreeEdge] {
+class Comparison(val nodes: Set[JoinTreeEdge], val op: Operator, val left: Expression, val right: Expression) extends HyperEdge[JoinTreeEdge] {
     val comparisonId = Comparison.getNewComparisonId()
 
     def getComparisonId(): Int = comparisonId
@@ -18,11 +18,11 @@ class Comparison(val nodes: Set[JoinTreeEdge], val op: ComparisonOperator, val l
     override def getNodes(): Set[JoinTreeEdge] = nodes
 
     override def equals(obj: Any): Boolean = obj match {
-        case that: Comparison => that.nodes == this.nodes
+        case that: Comparison => that.comparisonId == this.comparisonId
         case _ => false
     }
 
-    override def hashCode(): Int = nodes.##
+    override def hashCode(): Int = (nodes, op, left, right).##
 
     override def toString: String = {
         val path = nodes.map(e => e.getSrc.getRelationId() + "<->" + e.getDst.getRelationId()).mkString(",")
@@ -39,6 +39,6 @@ object Comparison {
     }
 
     def apply(nodes: Set[JoinTreeEdge], op: String, left: Expression, right: Expression): Comparison = {
-        new Comparison(nodes, ComparisonOperator.getComparisonOperator(op, left, right), left, right)
+        new Comparison(nodes, Operator.getOperator(op, left, right), left, right)
     }
 }
