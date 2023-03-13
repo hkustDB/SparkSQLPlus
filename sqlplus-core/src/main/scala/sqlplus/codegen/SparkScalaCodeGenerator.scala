@@ -1,15 +1,15 @@
 package sqlplus.codegen
 
-import sqlplus.compile.{AppendCommonExtraColumnAction, AppendComparisonExtraColumnAction, ApplySelfComparisonAction, ApplySemiJoinAction, CreateCommonExtraColumnAction, CreateComparisonExtraColumnAction, CreateComputationExtraColumnAction, CreateTransparentCommonExtraColumnAction, EndOfReductionAction, EnumerateAction, EnumerateWithOneComparisonAction, EnumerateWithTwoComparisonsAction, EnumerateWithoutComparisonAction, ReduceAction, RelationInfo, RootPrepareEnumerationAction}
-import sqlplus.expression.{ComparisonOperator, Variable}
+import sqlplus.compile.{AppendCommonExtraColumnAction, AppendComparisonExtraColumnAction, ApplySelfComparisonAction, ApplySemiJoinAction, CountResultAction, CreateCommonExtraColumnAction, CreateComparisonExtraColumnAction, CreateComputationExtraColumnAction, CreateTransparentCommonExtraColumnAction, EndOfReductionAction, EnumerateAction, EnumerateWithMoreThanTwoComparisonsAction, EnumerateWithOneComparisonAction, EnumerateWithTwoComparisonsAction, EnumerateWithoutComparisonAction, FormatResultAction, ReduceAction, RelationInfo, RootPrepareEnumerationAction}
+import sqlplus.expression.{Operator, Variable}
 import sqlplus.graph.{AggregatedRelation, AuxiliaryRelation, BagRelation, TableScanRelation}
 import sqlplus.plan.table.SqlPlusTable
-import sqlplus.types.IntDataType
+import sqlplus.types.{DataType, IntDataType}
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
-class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], val sourceTables: Set[SqlPlusTable],
+class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val sourceTables: Set[SqlPlusTable],
                               val aggregatedRelations: List[AggregatedRelation], val auxiliaryRelations: List[AuxiliaryRelation],
                               val bagRelations: List[BagRelation],
                               val relationIdToInfo: Map[Int, RelationInfo],
@@ -56,27 +56,21 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
 
     private def generateExecuteMethod(builder: mutable.StringBuilder): Unit = {
         indent(builder, 1).append("def main(args: Array[String]): Unit = {").append("\n")
-
         generateSparkInit(builder)
-        newLine(builder)
 
         generateCompareFunctionDefinitions(builder)
-        newLine(builder)
 
         generateSourceTables(builder)
-        newLine(builder)
+
         generateAggregatedSourceTables(builder)
-        newLine(builder)
+
         generateBagSourceTables(builder)
-        newLine(builder)
+
         generateAuxiliarySourceTables(builder)
-        newLine(builder)
 
         generateReduction(builder)
-        newLine(builder)
 
         generateEnumeration(builder)
-        newLine(builder)
 
         generateSparkClose(builder)
         indent(builder, 1).append("}").append("\n")
@@ -86,50 +80,57 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         indent(builder, 2).append("val conf = new SparkConf()").append("\n")
         indent(builder, 2).append("conf.setAppName(\"SparkSQLPlusExample\")").append("\n")
         indent(builder, 2).append("conf.setMaster(\"local\")").append("\n")
-        indent(builder, 2).append("val sc = new SparkContext(conf)").append("\n")
-        indent(builder, 2).append("val sparkSession = SparkSession.builder.config(sc.getConf).getOrCreate()").append("\n")
+        indent(builder, 2).append("val spark = SparkSession.builder.config(conf).getOrCreate()").append("\n")
     }
 
     private def generateSparkClose(builder: mutable.StringBuilder): Unit = {
-        indent(builder, 2).append("sparkSession.close()").append("\n")
+        newLine(builder)
+        indent(builder, 2).append("spark.close()").append("\n")
     }
 
     private def generateCompareFunctionDefinitions(builder: mutable.StringBuilder): Unit = {
-        for (op <- comparisonOperators)
-            indent(builder, 2).append(op.getFuncDefinition()).append("\n")
+        for (op <- comparisonOperators) {
+            newLine(builder)
+
+            for (row <- op.getFuncDefinition())
+                indent(builder, 2).append(row).append("\n")
+        }
     }
 
     private def generateSourceTables(builder: mutable.StringBuilder): Unit = {
         for (table <- sourceTables) {
+            newLine(builder)
+
             assert(!sourceTableNameToVariableNameDict.contains(table.getTableName))
             val variableName = variableNameAssigner.getNewVariableName()
             sourceTableNameToVariableNameDict(table.getTableName) = variableName
 
             val path = table.getTableProperties.get("path")
-            indent(builder, 2).append("val ").append(variableName).append(" = sc.textFile(\"")
+            indent(builder, 2).append("val ").append(variableName).append(" = spark.sparkContext.textFile(\"")
                 .append(path).append("\").map(line => {").append("\n")
-            indent(builder, 3).append("val fields = line.split(\"\\\\s+\")").append("\n")
+            indent(builder, 3).append("val fields = line.split(\",\")").append("\n")
 
-            val fields = table.getTableColumns.zipWithIndex.map(columnAndIndex =>
-                getFieldTypeConvertor("fields(" + columnAndIndex._2 + ")", columnAndIndex._1.getType))
+            val fields = table.getTableColumns.zipWithIndex.map(columnAndIndex => {
+                val dataType = DataType.fromTypeName(columnAndIndex._1.getType)
+                dataType.fromString(s"fields(${columnAndIndex._2})")
+            })
             indent(builder, 3).append("Array[Any](").append(fields.mkString(", ")).append(")").append("\n")
             indent(builder, 2).append("}).persist()").append("\n")
-
-            indent(builder, 2).append(variableName).append(".count()")
-
-            newLine(builder)
+            indent(builder, 2).append(variableName).append(".count()").append("\n")
         }
     }
 
     private def generateAggregatedSourceTables(builder: mutable.StringBuilder): Unit = {
         for (relation <- aggregatedRelations) {
+            newLine(builder)
+
             relation.func match {
                 case "COUNT" =>
                     val fromVariableName = sourceTableNameToVariableNameDict(relation.tableName)
                     val groupFields = relation.group.map(i => "fields(" + i + ")").mkString("(", ", ", ")")
                     val variableName = variableNameAssigner.getNewVariableName()
                     indent(builder, 2).append("val ").append(variableName).append(" = ").append(fromVariableName)
-                        .append(".map(fields => (").append(groupFields).append(", 1))")
+                        .append(".map(fields => (").append(groupFields).append(", 1L))")
                         .append(".reduceByKey(_ + _)")
                         .append(".map(x => Array[Any](" + (0 to relation.group.length).map(i => "x._" + (i + 1)).mkString(", ") + ")).persist()").append("\n")
                     indent(builder, 2).append(variableName).append(".count()").append("\n")
@@ -141,6 +142,8 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
 
     private def generateBagSourceTables(builder: mutable.StringBuilder): Unit = {
         for (bagRelation <- bagRelations) {
+            newLine(builder)
+
             // TODO: support not only triangle
             assert(bagRelation.getInternalRelations.size == 3)
             // should not put AuxiliaryRelation in BagRelation
@@ -163,7 +166,6 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
                     val convertedVariableName = variableNameAssigner.getNewVariableName()
                     indent(builder, 2).append("val ").append(convertedVariableName).append(" = ").append(sourceVariableName)
                         .append(".map(").append(createArray).append(").cache()").append("\n")
-                    newLine(builder)
                     indent(builder, 2).append(convertedVariableName).append(".count()").append("\n")
 
                     convertedSourceTableNameToVariableNameDict(tableName) = convertedVariableName
@@ -215,7 +217,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
             val variableIndices = variableIndicesBuffer.mkString("Array(", ",", ")")
 
             val bagVariableName = variableNameAssigner.getNewVariableName()
-            indent(builder, 2).append("val ").append(bagVariableName).append(" = sc.lftj(")
+            indent(builder, 2).append("val ").append(bagVariableName).append(" = spark.sparkContext.lftj(")
                 .append(sourceTableVariableNames).append(", ")
                 .append(relationCount).append(", ")
                 .append(variableCount).append(", ").append("\n")
@@ -229,6 +231,8 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
 
     private def generateAuxiliarySourceTables(builder: mutable.StringBuilder): Unit = {
         for (relation <- auxiliaryRelations) {
+            newLine(builder)
+
             val sourceRelation = relation.sourceRelation
             sourceRelation match {
                 case tableScanRelation: TableScanRelation =>
@@ -249,6 +253,8 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
     }
 
     private def generateReduction(builder: mutable.StringBuilder): Unit = {
+        newLine(builder)
+
         for (action <- reduceActions) {
             action match {
                 case createCommonExtraColumnAction: CreateCommonExtraColumnAction =>
@@ -277,10 +283,11 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         val relationId = action.relationId
         val extraColumnVariable = action.extraColumnVariable
         val joinKeyIndices = action.joinKeyIndices
+        val joinKeyTypes = action.joinKeyTypes
         val compareKeyIndex = action.compareKeyIndex
         val func = action.func
 
-        val relationGroupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndices)
+        val relationGroupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndices, joinKeyTypes)
         val sortedVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(sortedVariableName).append(" = ")
             .append(relationGroupedVariableName).append(".sortValuesWith(").append(compareKeyIndex).append(", ")
@@ -298,17 +305,18 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         val relationId = action.relationId
         val extraColumnVariable = action.extraColumnVariable
         val joinKeyIndices = action.joinKeyIndices
+        val joinKeyTypes = action.joinKeyTypes
 
         // the join key with parent must be the 1st field
-        assert(joinKeyIndices.size == 1 && joinKeyIndices.head == 0)
+        assert(joinKeyIndices.size == 1 && joinKeyIndices.head == 0 && joinKeyTypes.size == 1)
 
         // we issue CreateTransparentCommonExtraColumnAction only for AggregatedRelation
         assert(aggregatedRelationIdToVariableNameDict.contains(relationId))
         val rawVariableName = aggregatedRelationIdToVariableNameDict(relationId)
-
+        val newKey = joinKeyTypes.head.castFromAny("x(0)")
         val extraColumnVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(extraColumnVariableName).append(" = ")
-            .append(rawVariableName).append(".map(x => (x(0).asInstanceOf[Int], x(1)))").append("\n")
+            .append(rawVariableName).append(s".map(x => ($newKey, x(1)))").append("\n")
         extraColumnVariableToVariableNameDict(extraColumnVariable) = extraColumnVariableName
     }
 
@@ -316,12 +324,13 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         val relationId = action.relationId
         val extraColumnVariable = action.extraColumnVariable
         val joinKeyIndices = action.joinKeyIndices
+        val joinKeyTypes = action.joinKeyTypes
         val compareKeyIndex1 = action.compareKeyIndex1
         val compareKeyIndex2 = action.compareKeyIndex2
         val func1 = action.func1
         val func2 = action.func2
 
-        val relationGroupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndices)
+        val relationGroupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndices, joinKeyTypes)
         val treeLikeArrayVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(treeLikeArrayVariableName).append(" = ")
             .append(relationGroupedVariableName).append(".constructTreeLikeArray(")
@@ -341,9 +350,10 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         val relationId = action.relationId
         val columnVariable = action.columnVariable
         val keyIndices = action.keyIndices
+        val keyTypes = action.keyTypes
         val functionGenerator = action.functionGenerator
 
-        val relationKeyedVariableName = getKeyedVariableNameByRelationId(builder, relationId, keyIndices)
+        val relationKeyedVariableName = getKeyedVariableNameByRelationId(builder, relationId, keyIndices, keyTypes)
         val newVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(newVariableName).append(" = ")
             .append(relationKeyedVariableName).append(".appendExtraColumn(")
@@ -356,8 +366,9 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         val relationId = action.relationId
         val extraColumnVariable = action.extraColumnVariable
         val joinKeyIndices = action.joinKeyIndices
+        val joinKeyTypes = action.joinKeyTypes
 
-        val relationKeyedVariableName = getKeyedVariableNameByRelationId(builder, relationId, joinKeyIndices)
+        val relationKeyedVariableName = getKeyedVariableNameByRelationId(builder, relationId, joinKeyIndices, joinKeyTypes)
         val extraColumnVariableName = extraColumnVariableToVariableNameDict(extraColumnVariable)
         val newVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(newVariableName).append(" = ")
@@ -371,10 +382,11 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         val relationId = action.relationId
         val extraColumnVariable = action.extraColumnVariable
         val joinKeyIndices = action.joinKeyIndices
+        val joinKeyTypes = action.joinKeyTypes
         val compareKeyIndex = action.compareKeyIndex
         val func = action.func
 
-        val relationKeyedVariableName = getKeyedVariableNameByRelationId(builder, relationId, joinKeyIndices)
+        val relationKeyedVariableName = getKeyedVariableNameByRelationId(builder, relationId, joinKeyIndices, joinKeyTypes)
         val extraColumnVariableName = extraColumnVariableToVariableNameDict(extraColumnVariable)
         val newVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(newVariableName).append(" = ")
@@ -389,9 +401,10 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
     def generateApplySelfComparisonAction(builder: mutable.StringBuilder, action: ApplySelfComparisonAction): Unit = {
         val relationId = action.relationId
         val keyIndices = action.keyIndices
+        val keyTypes = action.keyTypes
         val functionGenerator = action.functionGenerator
 
-        val relationKeyedVariableName = getKeyedVariableNameByRelationId(builder, relationId, keyIndices)
+        val relationKeyedVariableName = getKeyedVariableNameByRelationId(builder, relationId, keyIndices, keyTypes)
         val newVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(newVariableName).append(" = ")
             .append(relationKeyedVariableName).append(".filter(")
@@ -404,10 +417,12 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         val currentRelationId = action.currentRelationId
         val childRelationId = action.childRelationId
         val joinKeyIndicesInCurrent = action.joinKeyIndicesInCurrent
+        val joinKeyTypesInCurrent = action.joinKeyTypesInCurrent
         val joinKeyIndicesInChild = action.joinKeyIndicesInChild
+        val joinKeyTypesInChild = action.joinKeyTypesInChild
 
-        val currentKeyedVariableName = getKeyedVariableNameByRelationId(builder, currentRelationId, joinKeyIndicesInCurrent)
-        val childKeyedVariableName = getKeyedVariableNameByRelationId(builder, childRelationId, joinKeyIndicesInChild)
+        val currentKeyedVariableName = getKeyedVariableNameByRelationId(builder, currentRelationId, joinKeyIndicesInCurrent, joinKeyTypesInCurrent)
+        val childKeyedVariableName = getKeyedVariableNameByRelationId(builder, childRelationId, joinKeyIndicesInChild, joinKeyTypesInChild)
         val newVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(newVariableName).append(" = ")
             .append(currentKeyedVariableName).append(".semiJoin(")
@@ -416,7 +431,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         activeRelationRecord.addKeyedVariableName(currentRelationId, joinKeyIndicesInCurrent, newVariableName)
     }
 
-    def getKeyedVariableNameByRelationId(builder: mutable.StringBuilder, relationId: Int, keyIndices: List[Int]): String = {
+    def getKeyedVariableNameByRelationId(builder: mutable.StringBuilder, relationId: Int, keyIndices: List[Int], keyTypes: List[DataType]): String = {
         if (activeRelationRecord.contains(relationId)) {
             val optKeyedVariableName = activeRelationRecord.getKeyedVariableNameWithKeys(relationId, keyIndices)
             if (optKeyedVariableName.nonEmpty) {
@@ -424,9 +439,19 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
             } else {
                 val activeVariableName = activeRelationRecord.getKeyedVariableNameWithAnyKey(relationId).get
                 val newVariableName = variableNameAssigner.getNewVariableName()
-                val func = keyIndices.map(i => s"x($i).asInstanceOf[Int]").mkString("x => (", ", ", ")") // TODO: type
+                val keyByFunc = if (keyIndices.size == 1 && keyTypes.size == 1) {
+                    val cast = keyTypes.head.castFromAny(s"x(${keyIndices.head})")
+                    s"x => $cast"
+                } else {
+                    keyIndices.zip(keyTypes).map(t => {
+                        val keyIndex = t._1
+                        val dataType = t._2
+                        dataType.castFromAny(s"x($keyIndex)")
+                    }).mkString("x => (", ", ", ")")
+                }
+
                 indent(builder, 2).append("val ").append(newVariableName).append(" = ")
-                    .append(activeVariableName).append(".reKeyBy(").append(func)
+                    .append(activeVariableName).append(".reKeyBy(").append(keyByFunc)
                     .append(")").append("\n")
                 activeRelationRecord.addKeyedVariableName(relationId, keyIndices, newVariableName)
                 newVariableName
@@ -451,9 +476,18 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
                 result
             } else {
                 val newVariableName = variableNameAssigner.getNewVariableName()
-                val func = keyIndices.map(i => s"x($i).asInstanceOf[Int]").mkString("x => (", ", ", ")") // TODO: type
+                val keyByFunc = if (keyIndices.size == 1 && keyTypes.size == 1) {
+                    val cast = keyTypes.head.castFromAny(s"x(${keyIndices.head})")
+                    s"x => $cast"
+                } else {
+                    keyIndices.zip(keyTypes).map(t => {
+                        val keyIndex = t._1
+                        val dataType = t._2
+                        dataType.castFromAny(s"x($keyIndex)")
+                    }).mkString("x => (", ", ", ")")
+                }
                 indent(builder, 2).append("val ").append(newVariableName).append(" = ")
-                    .append(sourceVariable).append(".keyBy(").append(func).append(")").append("\n")
+                    .append(sourceVariable).append(".keyBy(").append(keyByFunc).append(")").append("\n")
                 sourceRelationVariableToKeyedVariableNameDict((sourceVariable, keyIndices)) = newVariableName
                 activeRelationRecord.addKeyedVariableName(relationId, keyIndices, newVariableName)
                 newVariableName
@@ -466,12 +500,12 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         activeRelationRecord.getKeyedVariableNameWithAnyKey(relationId).get
     }
 
-    def getGroupedVariableNameByRelationId(builder: mutable.StringBuilder, relationId: Int, keyIndices: List[Int]): String = {
+    def getGroupedVariableNameByRelationId(builder: mutable.StringBuilder, relationId: Int, keyIndices: List[Int], keyTypes: List[DataType]): String = {
         val optGroupedVariableName = activeRelationRecord.getGroupedVariableNameWithKeys(relationId, keyIndices)
         if (optGroupedVariableName.nonEmpty) {
             optGroupedVariableName.get
         } else {
-            val keyedVariableName = getKeyedVariableNameByRelationId(builder, relationId, keyIndices)
+            val keyedVariableName = getKeyedVariableNameByRelationId(builder, relationId, keyIndices, keyTypes)
             val newVariableName = variableNameAssigner.getNewVariableName()
             indent(builder, 2).append("val ").append(newVariableName).append(" = ")
                 .append(keyedVariableName).append(".groupBy()").append("\n")
@@ -481,6 +515,8 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
     }
 
     private def generateEnumeration(builder: mutable.StringBuilder): Unit = {
+        newLine(builder)
+
         // the enumerateActions must be a RootPrepareEnumerationAction followed by 0 or more other EnumerationActions
         assert(enumerateActions.head.isInstanceOf[RootPrepareEnumerationAction])
 
@@ -499,29 +535,40 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
                     generateEnumerateWithOneComparisonAction(builder, enumerateWithOneComparisonAction, v)
                 case enumerateWithTwoComparisonsAction: EnumerateWithTwoComparisonsAction =>
                     generateEnumerateWithTwoComparisonsAction(builder, enumerateWithTwoComparisonsAction, v)
+                case enumerateWithMoreThanTwoComparisonsAction: EnumerateWithMoreThanTwoComparisonsAction =>
+                    generateEnumerateWithMoreThanTwoComparisonsAction(builder, enumerateWithMoreThanTwoComparisonsAction, v)
+                case formatResultAction: FormatResultAction =>
+                    generateFormatResultAction(builder, formatResultAction, v)
+                case CountResultAction =>
+                    generateCountResultAction(builder, v)
                 case _ =>
                     throw new RuntimeException("enumerateActions must be a RootPrepareEnumerationAction " +
                         "followed by 0 or more other EnumerationActions")
             }
         })
-
-        def generateFinalCount(variableName: String): Unit = {
-            indent(builder, 2).append(variableName).append(".count()").append("\n")
-        }
-
-        generateFinalCount(finalVariableName)
     }
 
     def generateRootPrepareEnumerationAction(builder: mutable.StringBuilder, action: RootPrepareEnumerationAction): String = {
         val relationId = action.relationId
         val joinKeyIndices = action.joinKeyIndices
+        val joinKeyTypes = action.joinKeyTypes
         val extractIndicesInCurrent = action.extractIndicesInCurrent
 
         if (joinKeyIndices.nonEmpty) {
             val variableName = getKeyedVariableNameWithAnyKeyByRelationId(relationId)
             val newVariableName = variableNameAssigner.getNewVariableName()
-            val keyByTuple = joinKeyIndices.map(i => s"t._2($i).asInstanceOf[Int]").mkString("(", ", ", ")")
-            val func = extractIndicesInCurrent.map(i => s"t._2($i)").mkString(s"t => ($keyByTuple, Array(", ", ", "))")
+
+            val newKey = if (joinKeyIndices.size == 1 && joinKeyTypes.size == 1) {
+                joinKeyTypes.head.castFromAny(s"t._2(${joinKeyIndices.head})")
+            } else {
+                joinKeyIndices.zip(joinKeyTypes).map(t => {
+                    val joinKeyIndex = t._1
+                    val joinKeyType = t._2
+                    joinKeyType.castFromAny(s"t._2($joinKeyIndex)")
+                }).mkString("(", ", ", ")")
+            }
+
+            val func = extractIndicesInCurrent.map(i => s"t._2($i)").mkString(s"t => ($newKey, Array(", ",", "))")
             indent(builder, 2).append("val ").append(newVariableName).append(" = ")
                 .append(variableName).append(s".map($func)").append("\n")
             newVariableName
@@ -537,13 +584,14 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
                                                  intermediateResultVariableName: String): String = {
         val relationId = action.relationId
         val joinKeyIndicesInCurrent = action.joinKeyIndicesInCurrent
+        val joinKeyTypesInCurrent = action.joinKeyTypesInCurrent
         val extractIndicesInCurrent = action.extractIndicesInCurrent
         val extractIndicesInIntermediateResult = action.extractIndicesInIntermediateResult
-        val optResultKeyIsInIntermediateResultAndIndices = action.optResultKeyIsInIntermediateResultAndIndices
-        val resultKeySelector = getResultKeySelectorInEnumerations(optResultKeyIsInIntermediateResultAndIndices)
+        val optResultKeyIsInIntermediateResultAndIndicesTypes = action.optResultKeyIsInIntermediateResultAndIndicesTypes
+        val resultKeySelector = getResultKeySelectorInEnumerations(optResultKeyIsInIntermediateResultAndIndicesTypes)
             .map(s => s", $s").getOrElse("")
 
-        val groupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndicesInCurrent)
+        val groupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndicesInCurrent, joinKeyTypesInCurrent)
         val newVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(newVariableName).append(" = ")
             .append(intermediateResultVariableName).append(".enumerateWithoutComparison(")
@@ -559,16 +607,17 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
                                                  intermediateResultVariableName: String): String = {
         val relationId = action.relationId
         val joinKeyIndicesInCurrent = action.joinKeyIndicesInCurrent
+        val joinKeyTypesInCurrent = action.joinKeyTypesInCurrent
         val compareKeyIndexInCurrent = action.compareKeyIndexInCurrent
         val compareKeyIndexInIntermediateResult = action.compareKeyIndexInIntermediateResult
         val func = action.func
         val extractIndicesInCurrent = action.extractIndicesInCurrent
         val extractIndicesInIntermediateResult = action.extractIndicesInIntermediateResult
-        val optResultKeyIsInIntermediateResultAndIndices = action.optResultKeyIsInIntermediateResultAndIndices
-        val resultKeySelector = getResultKeySelectorInEnumerations(optResultKeyIsInIntermediateResultAndIndices)
+        val optResultKeyIsInIntermediateResultAndIndicesTypes = action.optResultKeyIsInIntermediateResultAndIndicesTypes
+        val resultKeySelector = getResultKeySelectorInEnumerations(optResultKeyIsInIntermediateResultAndIndicesTypes)
             .map(s => s", $s").getOrElse("")
 
-        val groupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndicesInCurrent)
+        val groupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndicesInCurrent, joinKeyTypesInCurrent)
         val newVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(newVariableName).append(" = ")
             .append(intermediateResultVariableName).append(".enumerateWithOneComparison(")
@@ -587,15 +636,16 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
                                                   intermediateResultVariableName: String): String = {
         val relationId = action.relationId
         val joinKeyIndicesInCurrent = action.joinKeyIndicesInCurrent
+        val joinKeyTypesInCurrent = action.joinKeyTypesInCurrent
         val compareKeyIndexInIntermediateResult1 = action.compareKeyIndexInIntermediateResult1
         val compareKeyIndexInIntermediateResult2 = action.compareKeyIndexInIntermediateResult2
         val extractIndicesInCurrent = action.extractIndicesInCurrent
         val extractIndicesInIntermediateResult = action.extractIndicesInIntermediateResult
-        val optResultKeyIsInIntermediateResultAndIndices = action.optResultKeyIsInIntermediateResultAndIndices
-        val resultKeySelector = getResultKeySelectorInEnumerations(optResultKeyIsInIntermediateResultAndIndices)
+        val optResultKeyIsInIntermediateResultAndIndicesTypes = action.optResultKeyIsInIntermediateResultAndIndicesTypes
+        val resultKeySelector = getResultKeySelectorInEnumerations(optResultKeyIsInIntermediateResultAndIndicesTypes)
             .map(s => s", $s").getOrElse("")
 
-        val groupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndicesInCurrent)
+        val groupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndicesInCurrent, joinKeyTypesInCurrent)
         val newVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(newVariableName).append(" = ")
             .append(intermediateResultVariableName).append(".enumerateWithTwoComparisons(")
@@ -609,20 +659,65 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[ComparisonOperator], 
         newVariableName
     }
 
-    // TODO: replace with a type component
-    def getFieldTypeConvertor(f: String, t: String): String = t match {
-        case "INTEGER" | "INT" => f + ".toInt"
-        case _ => throw new UnsupportedOperationException
+    def generateEnumerateWithMoreThanTwoComparisonsAction(builder: StringBuilder, action: EnumerateWithMoreThanTwoComparisonsAction,
+                                                          intermediateResultVariableName: String): String = {
+        val relationId = action.relationId
+        val joinKeyIndicesInCurrent = action.joinKeyIndicesInCurrent
+        val joinKeyTypesInCurrent = action.joinKeyTypesInCurrent
+        val compareKeyIndexInCurrent = action.compareKeyIndexInCurrent
+        val compareKeyIndexInIntermediateResult = action.compareKeyIndexInIntermediateResult
+        val func = action.func
+        val extraFilters = action.extraFilters
+        val extractIndicesInCurrent = action.extractIndicesInCurrent
+        val extractIndicesInIntermediateResult = action.extractIndicesInIntermediateResult
+        val optResultKeyIsInIntermediateResultAndIndicesTypes = action.optResultKeyIsInIntermediateResultAndIndicesTypes
+        val resultKeySelector = getResultKeySelectorInEnumerations(optResultKeyIsInIntermediateResultAndIndicesTypes)
+            .map(s => s", $s").getOrElse("")
+
+        val groupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndicesInCurrent, joinKeyTypesInCurrent)
+        val newVariableName = variableNameAssigner.getNewVariableName()
+        indent(builder, 2).append("val ").append(newVariableName).append(" = ")
+            .append(intermediateResultVariableName).append(".enumerateWithMoreThanTwoComparisons(")
+            .append(groupedVariableName).append(", ")
+            .append(compareKeyIndexInIntermediateResult).append(", ")
+            .append(compareKeyIndexInCurrent).append(", ")
+            .append(func).append(", ")
+            .append(extraFilters.mkString("(l, r) => (", " && ", ")")).append(", ")
+            .append(extractIndicesInIntermediateResult.mkString("Array(", ",", ")")).append(", ")
+            .append(extractIndicesInCurrent.mkString("Array(", ",", ")"))
+            .append(resultKeySelector)
+            .append(")").append("\n")
+        newVariableName
     }
 
-    def getResultKeySelectorInEnumerations(optResultKeyIsInIntermediateResultAndIndices: Option[List[(Boolean, Int)]]): Option[String] = {
-        optResultKeyIsInIntermediateResultAndIndices.map(list => {
+    def generateFormatResultAction(builder: StringBuilder, action: FormatResultAction,
+                                   intermediateResultVariableName: String): String = {
+        val formatters = action.formatters
+        val mapFunc = formatters.indices.map(i => formatters(i).apply(s"x._2($i)")).mkString("x => Array(", ", ", ")")
+        val newVariableName = variableNameAssigner.getNewVariableName()
+        indent(builder, 2).append("val ").append(newVariableName).append(" = ")
+            .append(intermediateResultVariableName).append(".map(").append(mapFunc).append(")").append("\n")
+        indent(builder, 2).append(newVariableName).append(".take(20).map(r => r.mkString(\",\")).foreach(println)").append("\n")
+        indent(builder, 2).append("println(\"only showing top 20 rows\")").append("\n")
+        ""  // this must be the final action
+    }
+
+    def generateCountResultAction(builder: StringBuilder, intermediateResultVariableName: String): String = {
+        indent(builder, 2).append(intermediateResultVariableName).append(".count()").append("\n")
+        ""  // this must be the final action
+    }
+
+    def getResultKeySelectorInEnumerations(optResultKeyIsInIntermediateResultAndIndicesTypes: Option[List[(Boolean, Int, DataType)]]): Option[String] = {
+        optResultKeyIsInIntermediateResultAndIndicesTypes.map(list => {
             val fields = list.map(t => {
                 // t._1 indicates whether this index is in the intermediate result
-                if (t._1) s"l(${t._2}).asInstanceOf[Int]" else s"r(${t._2}).asInstanceOf[Int]"
+                val isInIntermediateResult = t._1
+                val index = t._2
+                val dataType = t._3
+                if (isInIntermediateResult) dataType.castFromAny(s"l($index)") else dataType.castFromAny(s"r($index)")
             })
 
-            val selector = fields.mkString("(l, r) => (", ", ", ")")
+            val selector = fields.mkString("(l, r) => (", ",", ")")
             selector
         })
     }

@@ -2,11 +2,12 @@ package sqlplus.convert
 
 import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.logical.{LogicalAggregate, LogicalFilter, LogicalJoin, LogicalProject, LogicalTableScan}
-import org.apache.calcite.rex.{RexCall, RexInputRef, RexNode}
-import sqlplus.expression.{Expression, IntPlusExpression, SingleVariableExpression, Variable, VariableDisjointSet, VariableManager}
+import org.apache.calcite.rex.{RexCall, RexInputRef, RexLiteral, RexNode}
+import org.apache.calcite.util.NlsString
+import sqlplus.expression.{DoubleLiteralExpression, DoublePlusDoubleExpression, DoubleTimesDoubleExpression, Expression, IntLiteralExpression, IntPlusIntExpression, IntTimesIntExpression, IntervalLiteralExpression, LongPlusLongExpression, LongTimesLongExpression, SingleVariableExpression, StringLiteralExpression, TimestampPlusIntervalExpression, Variable, VariableDisjointSet, VariableManager}
 import sqlplus.graph.{AggregatedRelation, Comparison, ComparisonHyperGraph, JoinTree, JoinTreeEdge, Relation, RelationalHyperGraph, TableScanRelation}
 import sqlplus.gyo.GyoAlgorithm
-import sqlplus.types.{DataType, IntDataType}
+import sqlplus.types.{DataType, DoubleDataType, IntDataType, IntervalDataType, LongDataType, TimestampDataType}
 
 import scala.collection.JavaConversions._
 import scala.collection.immutable.List
@@ -87,7 +88,7 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
             variableTableBuffer.append(newVariable)
         }
         val variableTable = variableTableBuffer.toArray
-        val rawComparisons = ListBuffer.empty[RexCall]
+        val conditions = ListBuffer.empty[RexCall]
 
         for (operand <- operands) {
             val rexCall: RexCall = operand.asInstanceOf[RexCall]
@@ -100,10 +101,14 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
                     val leftVariable = variableTable(left.getIndex)
                     val rightVariable = variableTable(right.getIndex)
                     disjointSet.merge(leftVariable, rightVariable)
-                case "<" | "<=" =>
-                    rawComparisons.append(rexCall)
+                case "<" | "<=" | ">" | ">=" =>
+                    conditions.append(rexCall)
+                case "LIKE" =>
+                    assert(rexCall.getOperands.get(0).isInstanceOf[RexInputRef])
+                    assert(rexCall.getOperands.get(1).isInstanceOf[RexLiteral])
+                    conditions.append(rexCall)
                 case _ =>
-                    throw new UnsupportedOperationException
+                    throw new UnsupportedOperationException(s"unsupported operator ${rexCall.getOperator.getName}")
             }
         }
 
@@ -113,7 +118,7 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
         }
 
         val relations = visitLogicalRelNode(logicalFilter.getInput, variableTable, 0)
-        val comparisons = rawComparisons.toList.map(rawComparison => {
+        val comparisons = conditions.toList.map(rawComparison => {
             val op = rawComparison.getOperator.getName
             val leftExpr = convertRexNodeToExpression(rawComparison.getOperands.get(0), variableTable)
             val rightExpr = convertRexNodeToExpression(rawComparison.getOperands.get(1), variableTable)
@@ -273,8 +278,10 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
                 SingleVariableExpression(variableTable(rexInputRef.getIndex))
             case rexCall: RexCall =>
                 convertRexCallToExpression(rexCall, variableTable)
+            case rexLiteral: RexLiteral =>
+                convertRexLiteralToExpression(rexLiteral)
             case _ =>
-                throw new UnsupportedOperationException
+                throw new UnsupportedOperationException(s"unknown rexNode type ${rexNode.getType}")
         }
     }
 
@@ -284,12 +291,43 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
                 val left = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
                 val right = convertRexNodeToExpression(rexCall.getOperands.get(1), variableTable)
                 if (left.getType() == IntDataType && right.getType() == IntDataType)
-                    IntPlusExpression(left, right)
-                else {
-                    throw new UnsupportedOperationException
+                    IntPlusIntExpression(left, right)
+                else if (left.getType() == LongDataType && right.getType() == LongDataType) {
+                    LongPlusLongExpression(left, right)
+                } else if (left.getType() == TimestampDataType && right.getType() == IntervalDataType) {
+                    TimestampPlusIntervalExpression(left, right)
+                } else if (left.getType() == DoubleDataType && right.getType() == DoubleDataType) {
+                    DoublePlusDoubleExpression(left, right)
+                } else {
+                    // TODO: more types
+                    throw new UnsupportedOperationException(s"unsupported + for ${left.getType()} and ${right.getType()}")
+                }
+            case "*" =>
+                val left = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
+                val right = convertRexNodeToExpression(rexCall.getOperands.get(1), variableTable)
+                if (left.getType() == IntDataType && right.getType() == IntDataType) {
+                    IntTimesIntExpression(left, right)
+                } else if (left.getType() == LongDataType && right.getType() == LongDataType) {
+                    LongTimesLongExpression(left, right)
+                } else if (left.getType() == DoubleDataType && right.getType() == DoubleDataType) {
+                    DoubleTimesDoubleExpression(left, right)
+                } else {
+                    // TODO: more types
+                    throw new UnsupportedOperationException(s"unsupported * for ${left.getType()} and ${right.getType()}")
                 }
             case _ =>
-                throw new UnsupportedOperationException
+                throw new UnsupportedOperationException("unsupported op " + rexCall.op.getName)
+        }
+    }
+
+    def convertRexLiteralToExpression(rexLiteral: RexLiteral): Expression = {
+        rexLiteral.getType.getSqlTypeName.getName match {
+            case "VARCHAR" => StringLiteralExpression(rexLiteral.getValue.toString)
+            case "INTEGER" => IntLiteralExpression(rexLiteral.getValue.toString.toInt)
+            case "DECIMAL" => DoubleLiteralExpression(rexLiteral.getValue.toString.toDouble)
+            case "CHAR" => StringLiteralExpression(rexLiteral.getValue.asInstanceOf[NlsString].getValue)
+            case "INTERVAL_DAY" => IntervalLiteralExpression(rexLiteral.getValue.toString.toLong)
+            case _ => throw new UnsupportedOperationException("unsupported literal type " + rexLiteral.getType.getSqlTypeName.getName)
         }
     }
 }

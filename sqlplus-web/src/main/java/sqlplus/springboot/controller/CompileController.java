@@ -109,7 +109,7 @@ public class CompileController {
         );
 
         SqlPlusCompiler sqlPlusCompiler = new SqlPlusCompiler(variableManager);
-        String code = sqlPlusCompiler.compile(catalogManager, convertResult, "sqlplus.example", "SparkSQLPlusExample");
+        String code = sqlPlusCompiler.compile(catalogManager, convertResult, "sqlplus.example", "SparkSQLPlusExample", true);
         CompileCandidateResponse response = new CompileCandidateResponse();
         response.setCode(code);
         result.setData(response);
