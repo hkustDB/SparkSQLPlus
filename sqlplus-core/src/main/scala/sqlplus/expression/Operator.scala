@@ -18,6 +18,10 @@ sealed trait UnaryOperator extends Operator {
 sealed trait BinaryOperator extends Operator {
     final def apply(x: String, y: String): String =
         s"${getFuncName()}($x, $y)"
+
+    def leftTypeName: String
+
+    def rightTypeName: String
 }
 
 object Operator {
@@ -103,6 +107,10 @@ class NumericBinaryOperator[T: TypeTag](suffix: String, relationalOperator: Stri
     override def getFuncLiteral(isReverse: Boolean): String = {
         s"(x: $typeName, y: $typeName) => ${if (!isReverse) apply("x", "y") else  apply("y", "x")}"
     }
+
+    override def leftTypeName: String = typeName
+
+    override def rightTypeName: String = typeName
 }
 
 case object IntLessThan extends NumericLessThan[Int]

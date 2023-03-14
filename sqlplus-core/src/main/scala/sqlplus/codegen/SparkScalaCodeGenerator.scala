@@ -1,7 +1,7 @@
 package sqlplus.codegen
 
 import sqlplus.compile.{AppendCommonExtraColumnAction, AppendComparisonExtraColumnAction, ApplySelfComparisonAction, ApplySemiJoinAction, CountResultAction, CreateCommonExtraColumnAction, CreateComparisonExtraColumnAction, CreateComputationExtraColumnAction, CreateTransparentCommonExtraColumnAction, EndOfReductionAction, EnumerateAction, EnumerateWithMoreThanTwoComparisonsAction, EnumerateWithOneComparisonAction, EnumerateWithTwoComparisonsAction, EnumerateWithoutComparisonAction, FormatResultAction, ReduceAction, RelationInfo, RootPrepareEnumerationAction}
-import sqlplus.expression.{Operator, Variable}
+import sqlplus.expression.{BinaryOperator, Operator, Variable}
 import sqlplus.graph.{AggregatedRelation, AuxiliaryRelation, BagRelation, TableScanRelation}
 import sqlplus.plan.table.SqlPlusTable
 import sqlplus.types.{DataType, IntDataType}
@@ -31,6 +31,9 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val source
     var lastRelationId: Int = -1
     
     val variableNameAssigner = new VariableNameAssigner
+
+    val treeLikeArrayVariableNameToTypeParametersDict = new mutable.HashMap[String, String]()
+    val treeLikeArrayDictionaryVariableNameToTypeParametersDict = new mutable.HashMap[String, String]()
 
     override def getPackageName: String = packageName
 
@@ -286,11 +289,12 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val source
         val joinKeyTypes = action.joinKeyTypes
         val compareKeyIndex = action.compareKeyIndex
         val func = action.func
+        val typeParameters = action.typeParameters
 
         val relationGroupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndices, joinKeyTypes)
         val sortedVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(sortedVariableName).append(" = ")
-            .append(relationGroupedVariableName).append(".sortValuesWith(").append(compareKeyIndex).append(", ")
+            .append(relationGroupedVariableName).append(s".sortValuesWith[$typeParameters](").append(compareKeyIndex).append(", ")
             .append(func).append(").persist()").append("\n")
         activeRelationRecord.addGroupedVariableName(relationId, joinKeyIndices, sortedVariableName)
 
@@ -329,21 +333,24 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val source
         val compareKeyIndex2 = action.compareKeyIndex2
         val func1 = action.func1
         val func2 = action.func2
+        val typeParameters = action.typeParameters
 
         val relationGroupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndices, joinKeyTypes)
         val treeLikeArrayVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(treeLikeArrayVariableName).append(" = ")
-            .append(relationGroupedVariableName).append(".constructTreeLikeArray(")
+            .append(relationGroupedVariableName).append(s".constructTreeLikeArray[$typeParameters](")
             .append(compareKeyIndex1).append(", ")
             .append(compareKeyIndex2).append(", ")
             .append(func1).append(", ")
             .append(func2).append(")").append("\n")
         activeRelationRecord.addGroupedVariableName(relationId, joinKeyIndices, treeLikeArrayVariableName)
+        treeLikeArrayVariableNameToTypeParametersDict(treeLikeArrayVariableName) = typeParameters
 
         val extraColumnVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(extraColumnVariableName).append(" = ")
             .append(treeLikeArrayVariableName).append(".createDictionary()").append("\n")
         extraColumnVariableToVariableNameDict(extraColumnVariable) = extraColumnVariableName
+        treeLikeArrayDictionaryVariableNameToTypeParametersDict(extraColumnVariableName) = typeParameters
     }
 
     def generateCreateComputationExtraColumnAction(builder: mutable.StringBuilder, action: CreateComputationExtraColumnAction): Unit = {
@@ -385,12 +392,14 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val source
         val joinKeyTypes = action.joinKeyTypes
         val compareKeyIndex = action.compareKeyIndex
         val func = action.func
+        val compareTypeParameter = action.compareTypeParameter
 
         val relationKeyedVariableName = getKeyedVariableNameByRelationId(builder, relationId, joinKeyIndices, joinKeyTypes)
         val extraColumnVariableName = extraColumnVariableToVariableNameDict(extraColumnVariable)
         val newVariableName = variableNameAssigner.getNewVariableName()
+        val typeParameters = s"${treeLikeArrayDictionaryVariableNameToTypeParametersDict(extraColumnVariableName)},$compareTypeParameter"
         indent(builder, 2).append("val ").append(newVariableName).append(" = ")
-            .append(relationKeyedVariableName).append(".appendExtraColumn(")
+            .append(relationKeyedVariableName).append(s".appendExtraColumn[$typeParameters](")
             .append(extraColumnVariableName).append(", ")
             .append(compareKeyIndex).append(", ")
             .append(func).append(")").append("\n")
@@ -616,11 +625,12 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val source
         val optResultKeyIsInIntermediateResultAndIndicesTypes = action.optResultKeyIsInIntermediateResultAndIndicesTypes
         val resultKeySelector = getResultKeySelectorInEnumerations(optResultKeyIsInIntermediateResultAndIndicesTypes)
             .map(s => s", $s").getOrElse("")
+        val typeParameters = action.typeParameters
 
         val groupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndicesInCurrent, joinKeyTypesInCurrent)
         val newVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(newVariableName).append(" = ")
-            .append(intermediateResultVariableName).append(".enumerateWithOneComparison(")
+            .append(intermediateResultVariableName).append(s".enumerateWithOneComparison[$typeParameters](")
             .append(groupedVariableName).append(", ")
             .append(compareKeyIndexInIntermediateResult).append(", ")
             .append(compareKeyIndexInCurrent).append(", ")
@@ -644,11 +654,13 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val source
         val optResultKeyIsInIntermediateResultAndIndicesTypes = action.optResultKeyIsInIntermediateResultAndIndicesTypes
         val resultKeySelector = getResultKeySelectorInEnumerations(optResultKeyIsInIntermediateResultAndIndicesTypes)
             .map(s => s", $s").getOrElse("")
+        val compareAndResultTypeParameters = action.compareAndResultTypeParameters
 
         val groupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndicesInCurrent, joinKeyTypesInCurrent)
         val newVariableName = variableNameAssigner.getNewVariableName()
+        val typeParameters = s"${treeLikeArrayVariableNameToTypeParametersDict(groupedVariableName)},$compareAndResultTypeParameters"
         indent(builder, 2).append("val ").append(newVariableName).append(" = ")
-            .append(intermediateResultVariableName).append(".enumerateWithTwoComparisons(")
+            .append(intermediateResultVariableName).append(s".enumerateWithTwoComparisons[${typeParameters}](")
             .append(groupedVariableName).append(", ")
             .append(compareKeyIndexInIntermediateResult1).append(", ")
             .append(compareKeyIndexInIntermediateResult2).append(", ")
@@ -673,11 +685,12 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val source
         val optResultKeyIsInIntermediateResultAndIndicesTypes = action.optResultKeyIsInIntermediateResultAndIndicesTypes
         val resultKeySelector = getResultKeySelectorInEnumerations(optResultKeyIsInIntermediateResultAndIndicesTypes)
             .map(s => s", $s").getOrElse("")
+        val typeParameters = action.typeParameters
 
         val groupedVariableName = getGroupedVariableNameByRelationId(builder, relationId, joinKeyIndicesInCurrent, joinKeyTypesInCurrent)
         val newVariableName = variableNameAssigner.getNewVariableName()
         indent(builder, 2).append("val ").append(newVariableName).append(" = ")
-            .append(intermediateResultVariableName).append(".enumerateWithMoreThanTwoComparisons(")
+            .append(intermediateResultVariableName).append(s".enumerateWithMoreThanTwoComparisons[${typeParameters}](")
             .append(groupedVariableName).append(", ")
             .append(compareKeyIndexInIntermediateResult).append(", ")
             .append(compareKeyIndexInCurrent).append(", ")

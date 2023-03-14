@@ -34,7 +34,7 @@ object Query9SparkSQLPlus {
 		val v2 = v1.keyBy(x => (x(3).asInstanceOf[String], x(4).asInstanceOf[Long]))
 		val v3 = v2.filter(x => match1(x._2(2).asInstanceOf[String]))
 		val v4 = v3.groupBy()
-		val v5 = v4.sortValuesWith(5, (x: Double, y: Double) => doubleLessThan(y, x)).persist()
+		val v5 = v4.sortValuesWith[Double, Double, Double, Double](5, (x: Double, y: Double) => doubleLessThan(y, x)).persist()
 		val v6 = v5.extractFieldInHeadElement(5)
 		val v7 = v2.appendExtraColumn(v6)
 		val v8 = v7.reKeyBy(x => x(0).asInstanceOf[Long])
@@ -43,7 +43,7 @@ object Query9SparkSQLPlus {
 		val v11 = v10.filter(x => match0(x._2(2).asInstanceOf[String]))
 
 		val v12 = v11.map(t => ((t._2(3).asInstanceOf[String], t._2(4).asInstanceOf[Long]), Array(t._2(0), t._2(1), t._2(2), t._2(5), t._2(7))))
-		val v13 = v12.enumerateWithMoreThanTwoComparisons(v5, 4, 5, (x: Double, y: Double) => doubleLessThan(x, y), (l, r) => (longLessThanOrEqualTo(l(1).asInstanceOf[Long], r(1).asInstanceOf[Long]) && longGreaterThanOrEqualTo((l(1).asInstanceOf[Long] + 7776000000L).asInstanceOf[Long], r(1).asInstanceOf[Long])), Array(0, 1, 2, 3), Array(0, 1, 2, 3, 4, 5))
+		val v13 = v12.enumerateWithMoreThanTwoComparisons[Double, Double, Double, Double, (String, Long)](v5, 4, 5, (x: Double, y: Double) => doubleLessThan(x, y), (l, r) => (longLessThanOrEqualTo(l(1).asInstanceOf[Long], r(1).asInstanceOf[Long]) && longGreaterThanOrEqualTo((l(1).asInstanceOf[Long] + 7776000000L).asInstanceOf[Long], r(1).asInstanceOf[Long])), Array(0, 1, 2, 3), Array(0, 1, 2, 3, 4, 5))
 
 		val ts1 = System.currentTimeMillis()
 		val cnt = v13.count()

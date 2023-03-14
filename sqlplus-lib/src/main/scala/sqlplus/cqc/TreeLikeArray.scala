@@ -1,232 +1,77 @@
 package sqlplus.cqc
 
-import scala.collection.mutable.ArrayBuffer
-import scala.util.control.Breaks.{break, breakable}
-
 /**
-  A 2-D data structure implemented based on Tree Like Array
+ * @param input the input Array to build the TreeLikeArray
+ * @param keyIndex1
+ * @param keyIndex2
+ * @param func1
+ * @param func2
+ * @tparam C1 type of arguments in the first compare function
+ * @tparam C2 type of arguments in the second compare function
+ * @tparam T1 actual type of the location keyIndex1 of each row in input
+ * @tparam T2 actual type of the location keyIndex2 of each row in input
  */
-class TreeLikeArray[K1, K2] extends java.io.Serializable {
-  private var data_large : Array[(K1, Array[Array[Any]])] = _
-  private var data_small : Array[Array[Any]] = _
-  private val limitation = 102400000
-  private var key1 : Int = _
-  private var key2 : Int = _
-  private var smaller1 : (K1, K1) => Boolean = _
-  private var smaller2 : (K2, K2) => Boolean = _
-  private var isSmall : Boolean = _
-  private var smallEnumerator : SmallIterator = null
-  private var largeEnumerator : LargeIterator = null
-  private def lowbit(x : Int) : Int = {
-    x & -x
-  }
+class TreeLikeArray[C1, C2, T1, T2](input: Array[Array[Any]],
+                                    val keyIndex1: Int,
+                                    val keyIndex2: Int,
+                                    val func1: (C1, C1) => Boolean,
+                                    val func2: (C2, C2) => Boolean)(implicit val f1: T1 => C1, val f2: T2 => C2) extends java.io.Serializable {
+    // sort by the first compare function on position keyIndex1. The value located at keyIndex1 is T1(may not = C1).
+    // Use the implicit f1 to convert it into type C1 and compare
+    val content = input.sortWith((x, y) => func1(x(keyIndex1).asInstanceOf[T1], y(keyIndex1).asInstanceOf[T1]))
 
-  class LargeIterator() extends Iterator[Array[Any]] {
-    private var k1 : K1 = _
-    private var k2 : K2 = _
-    private var iter : Int = 0
-    private var hasOutput = false
-    private var nextEle : Array[Any] = _
-    private var pos : Int = _
-    override def hasNext: Boolean = hasOutput
+    class TreeLikeArrayIterator(value1: C1, value2: C2)(implicit val f1: T1 => C1, val f2: T2 => C2) extends Iterator[Array[Any]] {
+        var keyValue1: C1 = value1
+        var keyValue2: C2 = value2
+        private var currentRowIndex: Int = 0
+        private var nextElement: Array[Any] = _
 
-    override def next(): Array[Any] = {
-      val result = nextEle
-      var findNext = false
-      while (pos > 0 && !findNext) {
-        if (iter < data_large(pos)._2.length) {
-          val j = data_large(pos)._2(iter)
-          iter = iter + 1
-          if (smaller2(j(key2).asInstanceOf[K2], k2)) {
-            nextEle = j
-            findNext = true
-          }
-        }
-        if (!findNext) {
-          pos = pos - lowbit(pos)
-          iter = 0
-        }
-      }
-      if (pos == 0) hasOutput = false
-      result
-    }
+        override def hasNext: Boolean = {
+            if (nextElement != null)
+                true
+            else {
+                while (currentRowIndex < content.length && nextElement == null) {
+                    val row = content(currentRowIndex)
+                    currentRowIndex = currentRowIndex + 1
+                    if (func1(row(keyIndex1).asInstanceOf[T1], keyValue1)) {
+                        if (func2(row(keyIndex2).asInstanceOf[T2], keyValue2)) {
+                            nextElement = row
+                        }
+                    } else {
+                        currentRowIndex = content.length
+                    }
+                }
 
-    def init(k1 : K1, k2 : K2) : Unit = {
-      this.k1 = k1
-      this.k2 = k2
-      pos = TreeLikeArray.this.find(k1)
-      hasOutput = true
-      var findNext: Boolean = false
-      while (pos > 0 && !findNext) {
-        iter = 0
-        if (iter < data_large(pos)._2.length) {
-          val j = data_large(pos)._2(iter)
-          iter = iter + 1
-          if (smaller2(j(key2).asInstanceOf[K2], k2)) {
-            nextEle = j
-            findNext = true
-          }
-        }
-        if (!findNext) pos = pos - lowbit(pos)
-      }
-    }
-  }
-
-  class SmallIterator() extends Iterator[Array[Any]] {
-    private var k1 : K1 = _
-    private var k2 : K2 = _
-    private var iter : Int = 0
-    private var nextEle : Array[Any] = null
-    override def hasNext : Boolean = {
-      if (nextEle != null) true
-      else {
-        while (iter < data_small.length && nextEle == null) {
-          val i = data_small(iter)
-          iter = iter + 1
-          if (smaller1(i(key1).asInstanceOf[K1], k1)) {
-            if (smaller2(i(key2).asInstanceOf[K2], k2)) {
-              nextEle = i
+                nextElement != null
             }
-          } else {
-            iter = data_small.length
-          }
         }
-        if (nextEle == null) false
-        else true
-      }
-    }
 
-    override def next() : Array[Any] = {
-      if (!hasNext) throw new Exception("The iterator has no output!")
-      else {
-        val result = nextEle
-        nextEle = null
-        result
-      }
-    }
-
-    def init(k1 : K1, k2 : K2) : Unit = {
-      this.k1 = k1
-      this.k2 = k2
-      iter = 0 //data_small.toIterator
-      nextEle = null
-    }
-  }
-
-  def this(ori: Array[Array[Any]],
-           key1 : Int,
-           key2 : Int,
-           smaller1 : (K1, K1) => Boolean,
-           smaller2 : (K2, K2) => Boolean) {
-    this()
-    this.key1 = key1
-    this.key2 = key2
-    this.smaller1 = smaller1
-    this.smaller2 = smaller2
-    if (ori.length < limitation) {
-      data_small = ori.sortWith((x, y) => smaller1(x(key1).asInstanceOf[K1], y(key1).asInstanceOf[K1]))
-      isSmall = true
-    } else {
-      isSmall = false
-      val tempArray = ori.sortWith((x, y) => smaller1(x(key1).asInstanceOf[K1], y(key1).asInstanceOf[K1]))
-      data_large = new Array[(K1, Array[Array[Any]])](tempArray.length+1)
-      for (i <- 1 to tempArray.length) {
-        val s = lowbit(i)
-        val sortedArray = tempArray
-          .slice(i-s, i)
-          .sortWith((x, y) => smaller2(x(key2).asInstanceOf[K2], y(key2).asInstanceOf[K2]))
-        data_large(i) = (tempArray(i-1)(key1).asInstanceOf[K1], sortedArray)
-
-      }
-    }
-  }
-
-  private def find(ele : K1) : Int = {
-    var left = 1
-    var right = data_large.length
-    while (left < right) {
-      val mid = (left + right)/2
-      if (smaller1(data_large(mid)._1, ele)) {
-        left = mid+1
-      } else {
-        right = mid
-      }
-    }
-    left-1
-  }
-
-  def enumeration(k1 : K1, k2 : K2) : Array[Array[Any]] = {
-    val tempArray = new ArrayBuffer[Array[Any]]()
-    if (isSmall) {
-      breakable {
-        for (i <- data_small) {
-          if (smaller1(i(key1).asInstanceOf[K1],k1)) {
-            if (smaller2(i(key2).asInstanceOf[K2], k2)) {
-              tempArray.append(i)
+        override def next(): Array[Any] = {
+            if (!hasNext)
+                Iterator.empty.next()
+            else {
+                val result = nextElement
+                nextElement = null
+                result
             }
-          } else {
-            break
-          }
         }
-      }
-    } else {
-      var i = find(k1)
-      while (i > 0) {
-        breakable {
-          for (j <- data_large(i)._2) {
-            if (smaller2(j(key2).asInstanceOf[K2], k2)) {
-              tempArray.append(j)
+    }
+
+    def iterator(keyValue1: C1, keyValue2: C2): Iterator[Array[Any]] = new TreeLikeArrayIterator(keyValue1, keyValue2)
+
+    def toDictionary: Array[(T1, T2)] = {
+        val size = content.length
+        val result = Array.ofDim[(T1, T2)](size)
+
+        result(0) = (content(0)(keyIndex1).asInstanceOf[T1], content(0)(keyIndex2).asInstanceOf[T2])
+        for (i <- 1 until size) {
+            if (func2(result(i - 1)._2, content(i)(keyIndex2).asInstanceOf[C2])) {
+                result(i) = (content(i)(keyIndex1).asInstanceOf[T1], result(i - 1)._2)
             } else {
-              break
+                result(i) = (content(i)(keyIndex1).asInstanceOf[T1], content(i)(keyIndex2).asInstanceOf[T2])
             }
-          }
         }
-        i = i - lowbit(i)
-      }
-    }
-    tempArray.toArray
-  }
 
-  def enumerationIterator(k1 : K1, k2 : K2) : Iterator[Array[Any]] = {
-    if (isSmall) {
-      if (smallEnumerator == null) smallEnumerator = new SmallIterator
-      smallEnumerator.init(k1, k2)
-      smallEnumerator
-    } else {
-      if (largeEnumerator == null) largeEnumerator = new LargeIterator
-      largeEnumerator.init(k1, k2)
-      largeEnumerator
+        result
     }
-  }
-
-  def toSmall : Array[(K1, K2)] = {
-    val size = if (isSmall) data_small.length
-    else data_large.length-1
-    val tempArray = new Array[(K1, K2)](size)
-    if (isSmall) {
-      tempArray(0) = (data_small(0)(key1).asInstanceOf[K1], data_small(0)(key2).asInstanceOf[K2])
-      for (i <- 1 until size) {
-        if (smaller2(tempArray(i-1)._2, data_small(i)(key2).asInstanceOf[K2])) {
-          tempArray(i) = (data_small(i)(key1).asInstanceOf[K1], tempArray(i-1)._2)
-        } else {
-          tempArray(i) = (data_small(i)(key1).asInstanceOf[K1], data_small(i)(key2).asInstanceOf[K2])
-        }
-      }
-    } else {
-      tempArray(0) = (data_large(1)._1,data_large(1)._2.head(key2).asInstanceOf[K2])
-      for (i <- 1 until size) {
-        if (smaller2(tempArray(i-1)._2, data_large(i+1)._2.head(key2).asInstanceOf[K2])) {
-          tempArray(i) = (data_large(i+1)._1, tempArray(i-1)._2)
-        } else {
-          tempArray(i) = (data_large(i+1)._1, data_large(i+1)._2.head(key2).asInstanceOf[K2])
-        }
-      }
-    }
-    tempArray
-  }
-
-  def exists(k1 : K1, k2 : K2) : Boolean = {
-    val iter = enumerationIterator(k1, k2)
-    if (iter.nonEmpty) true else false
-  }
 }

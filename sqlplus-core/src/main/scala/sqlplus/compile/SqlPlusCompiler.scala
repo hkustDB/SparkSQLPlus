@@ -156,8 +156,10 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
                         buffer.append(optAction.get)
                         comparisonInfo.update(SingleVariableExpression(compareVariable), isLeft)
                     }
+
+                    val typeParameter = compareVariable.dataType.getScalaTypeName
                     buffer.append(AppendComparisonExtraColumnAction(currentRelationId, columnVariable,
-                        joinVariableIndices, joinVariableTypes, compareVariableIndex, comparisonInfo.getOperator().getFuncLiteral(isReverse = isLeft)))
+                        joinVariableIndices, joinVariableTypes, compareVariableIndex, comparisonInfo.getOperator().getFuncLiteral(isReverse = isLeft), typeParameter))
             }
         })
 
@@ -271,8 +273,13 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
                         onlyComparisonInfo.removeIncidentRelationId(currentRelationId)
                         parentRelationInfo.addExtraColumn(CommonExtraColumn(columnVariable, joinVariables))
                         currentRelationInfo.setEnumerationInfo(enumerationInfo)
+
+                        // creating a common extra column requires sorting. The op must be binary operator.
+                        assert(onlyComparisonInfo.getOperator().isInstanceOf[BinaryOperator])
+                        val op = onlyComparisonInfo.getOperator().asInstanceOf[BinaryOperator]
+                        val typeParameters = s"${op.leftTypeName},${op.rightTypeName},${columnVariable.dataType.getScalaTypeName},${columnVariable.dataType.getScalaTypeName}"
                         buffer.append(CreateCommonExtraColumnAction(currentRelationId, columnVariable,
-                            joinVariableIndices, joinVariableTypes, compareVariableIndex, func))
+                            joinVariableIndices, joinVariableTypes, compareVariableIndex, func, typeParameters))
                     }
                 case 2 =>
                     // at most 1 long comparison
@@ -316,45 +323,52 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
                     comparisonInfo2.removeIncidentRelationId(currentRelationId)
                     parentRelationInfo.addExtraColumn(ComparisonExtraColumn(columnVariable, joinVariables, comparisonInfo1))
                     currentRelationInfo.setEnumerationInfo(enumerationInfo)
+
+                    assert(comparisonInfo1.getOperator().isInstanceOf[BinaryOperator])
+                    val op1 = comparisonInfo1.getOperator().asInstanceOf[BinaryOperator]
+                    assert(comparisonInfo2.getOperator().isInstanceOf[BinaryOperator])
+                    val op2 = comparisonInfo2.getOperator().asInstanceOf[BinaryOperator]
+                    val typeParameters = s"${op1.leftTypeName},${op2.rightTypeName},${compareVariable1.dataType.getScalaTypeName},${compareVariable2.dataType.getScalaTypeName}"
+
                     buffer.append(CreateComparisonExtraColumnAction(currentRelationId, columnVariable,
-                        joinVariableIndices, joinVariableTypes, compareVariableIndex1, compareVariableIndex2, func1, func2))
+                        joinVariableIndices, joinVariableTypes, compareVariableIndex1, compareVariableIndex2, func1, func2, typeParameters))
                 case _ =>
                     // at most 1 long comparison
                     assert(nonSelfComparisons.count(c => c.getIncidentRelationIds().size > 2) <= 1)
                     // as mentioned in the CQC paper, we reduce by only one comparison and delay the other comparisons to the enumeration
                     val optLongComparison = nonSelfComparisons.find(c => c.getIncidentRelationIds().size > 2)
                     // select the only long comparison, or arbitrarily select one if no long comparison
-                    val selectedComparison = optLongComparison.getOrElse(nonSelfComparisons.head)
-                    val remainingComparisons = nonSelfComparisons.filterNot(c => c == selectedComparison)
+                    val selectedComparisonInfo = optLongComparison.getOrElse(nonSelfComparisons.head)
+                    val remainingComparisonInfos = nonSelfComparisons.filterNot(c => c == selectedComparisonInfo)
 
                     val joinVariableIndices = joinVariables.map(currentVariableIndicesMap)
                     val joinVariableTypes = joinVariables.map(v => v.dataType)
-                    val (expression, variable, isLeft) = getCurrentExpressionInComparison(currentVariables.toSet, selectedComparison)
+                    val (expression, variable, isLeft) = getCurrentExpressionInComparison(currentVariables.toSet, selectedComparisonInfo)
                     val (compareVariable, compareVariableIndex, optAction) =
                         createComputationColumnIfNeeded(currentRelationInfo, expression, variable, joinVariableIndices, joinVariableTypes)
                     if (optAction.nonEmpty) {
                         buffer.append(optAction.get)
-                        selectedComparison.update(SingleVariableExpression(compareVariable), isLeft)
+                        selectedComparisonInfo.update(SingleVariableExpression(compareVariable), isLeft)
                     }
 
                     val extraFilterFunctionBuffer = ListBuffer.empty[(ListBuffer[Variable], List[Variable]) => ((String, String) => String)]
-                    for (remainingComparison <- remainingComparisons) {
+                    for (remainingComparisonInfo <- remainingComparisonInfos) {
                         // ivs = intermediateVariables, cvs = currentVariables, during enumeration compilation
                         extraFilterFunctionBuffer.append((ivs, cvs) => {
                             // during enumeration execution, l = intermediateVariables, r = currentVariables
                             (l, r) => {
                                 // this is a non-self short comparison. If the LHS of the comparison is contained in currentVariables,
                                 // then the RHS should be contained in intermediateResultVariables, vice versa.
-                                val isLeftContainedInCurrent = remainingComparison.getLeft().getVariables().subsetOf(currentVariables.toSet)
+                                val isLeftContainedInCurrent = remainingComparisonInfo.getLeft().getVariables().subsetOf(currentVariables.toSet)
 
-                                val op = remainingComparison.getOperator().asInstanceOf[BinaryOperator]
-                                val left = remainingComparison.getLeft() match {
+                                val op = remainingComparisonInfo.getOperator().asInstanceOf[BinaryOperator]
+                                val left = remainingComparisonInfo.getLeft() match {
                                     case compute: ComputeExpression =>
                                         compute.getComputeFunction(if (isLeftContainedInCurrent) cvs else ivs.toList, true)(if (isLeftContainedInCurrent) r else l)
                                     case literal: LiteralExpression =>
                                         literal.getLiteral()
                                 }
-                                val right = remainingComparison.getRight() match {
+                                val right = remainingComparisonInfo.getRight() match {
                                     case compute: ComputeExpression =>
                                         compute.getComputeFunction(if (!isLeftContainedInCurrent) cvs else ivs.toList, true)(if (!isLeftContainedInCurrent) r else l)
                                     case literal: LiteralExpression =>
@@ -363,19 +377,23 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
                                 op.apply(left, right)
                             }
                         })
-                        remainingComparison.removeIncidentRelationId(currentRelationId)
-                        remainingComparison.removeIncidentRelationId(parentRelationInfo.getRelationId())
+                        remainingComparisonInfo.removeIncidentRelationId(currentRelationId)
+                        remainingComparisonInfo.removeIncidentRelationId(parentRelationInfo.getRelationId())
                     }
-                    val enumerationInfo = EnumerationInfo(joinVariables, List((selectedComparison.mkSnapshot(), isLeft)),
+                    val enumerationInfo = EnumerationInfo(joinVariables, List((selectedComparisonInfo.mkSnapshot(), isLeft)),
                         nonSelfComparisons.size, extraFilterFunctionBuffer.toList)
                     val columnVariable = variableManager.getNewVariable(compareVariable.dataType)
-                    val func = selectedComparison.getOperator().getFuncLiteral(isReverse = !isLeft)
-                    selectedComparison.update(SingleVariableExpression(columnVariable), isLeft)
-                    selectedComparison.removeIncidentRelationId(currentRelationId)
+                    val func = selectedComparisonInfo.getOperator().getFuncLiteral(isReverse = !isLeft)
+                    selectedComparisonInfo.update(SingleVariableExpression(columnVariable), isLeft)
+                    selectedComparisonInfo.removeIncidentRelationId(currentRelationId)
                     parentRelationInfo.addExtraColumn(CommonExtraColumn(columnVariable, joinVariables))
                     currentRelationInfo.setEnumerationInfo(enumerationInfo)
+
+                    assert(selectedComparisonInfo.getOperator().isInstanceOf[BinaryOperator])
+                    val op = selectedComparisonInfo.getOperator().asInstanceOf[BinaryOperator]
+                    val typeParameters = s"${op.leftTypeName},${op.rightTypeName},${columnVariable.dataType.getScalaTypeName},${columnVariable.dataType.getScalaTypeName}"
                     buffer.append(CreateCommonExtraColumnAction(currentRelationId, columnVariable,
-                        joinVariableIndices, joinVariableTypes, compareVariableIndex, func))
+                        joinVariableIndices, joinVariableTypes, compareVariableIndex, func, typeParameters))
             }
         }
 
@@ -534,7 +552,7 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
             lastRelationInfo.getRelationId(),
             rootKeyByVariables.map(rootRelationVariablesDict), rootKeyByVariables.map(v => v.dataType), rootKeepVariableList.map(rootRelationVariablesDict)))
 
-
+        var previousStepKeyByVariables = rootKeyByVariables
         for (index <- actualEnumerateRelationList.indices) {
             val relationInfo = actualEnumerateRelationList(index)
             val currentRelationVariables = relationInfo.getCurrentVariables()
@@ -547,7 +565,9 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
             val (currentRelationIndices, intermediateResultIndices, newIntermediateVariables) =
                 getExtractIndices(currentRelationVariables, intermediateResultVariables.toList, currentKeepVariables)
 
-            val optResultKeyIsInIntermediateResultAndIndicesTypes = keyByVariables.get(relationInfo.getRelationId())
+            val optKeyByVariables = keyByVariables.get(relationInfo.getRelationId())
+            val currentStepKeyByVariables = optKeyByVariables.getOrElse(previousStepKeyByVariables)
+            val optResultKeyIsInIntermediateResultAndIndicesTypes = optKeyByVariables
                 .map(list => list.map(v => {
                 if (currentRelationVariables.contains(v))
                     (false, currentRelationVariablesDict(v), v.dataType)
@@ -569,10 +589,20 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
                     val compareVariableInIntermediate = if (isLeft) onlyComparison.right else onlyComparison.left
                     val compareKeyIndexInCurrent = currentRelationVariablesDict(compareVariableInCurrent)
                     val compareKeyIndexInIntermediate = intermediateResultVariablesDict(compareVariableInIntermediate)
+
+                    assert(onlyComparison.op.isInstanceOf[BinaryOperator])
+                    val op = onlyComparison.op.asInstanceOf[BinaryOperator]
+                    val resultKeyByVariableTypeParameters =
+                        if (currentStepKeyByVariables.size == 1)
+                            currentStepKeyByVariables.head.dataType.getScalaTypeName
+                        else
+                            currentStepKeyByVariables.map(v => v.dataType.getScalaTypeName).mkString("(",",",")")
+                    val typeParameters = s"${op.leftTypeName},${op.rightTypeName},${compareVariableInIntermediate.dataType.getScalaTypeName}," +
+                        s"${compareVariableInCurrent.dataType.getScalaTypeName},$resultKeyByVariableTypeParameters"
                     val action = EnumerateWithOneComparisonAction(relationInfo.getRelationId(),
                         joinVariables.map(currentRelationVariablesDict), joinVariables.map(v => v.dataType),
                         compareKeyIndexInCurrent, compareKeyIndexInIntermediate, onlyComparison.op.getFuncLiteral(isReverse = isLeft),
-                        currentRelationIndices, intermediateResultIndices, optResultKeyIsInIntermediateResultAndIndicesTypes)
+                        currentRelationIndices, intermediateResultIndices, optResultKeyIsInIntermediateResultAndIndicesTypes, typeParameters)
                     enumerateActions.append(action)
                     intermediateResultVariables.clear()
                     intermediateResultVariables.appendAll(newIntermediateVariables)
@@ -583,10 +613,19 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
                     val intermediateResultCompareVariable2 = if (isLeft2) comparison2.right else comparison2.left
                     val intermediateResultCompareVariableIndex1 = intermediateResultVariables.toList.indexOf(intermediateResultCompareVariable1)
                     val intermediateResultCompareVariableIndex2 = intermediateResultVariables.toList.indexOf(intermediateResultCompareVariable2)
+
+                    val resultKeyByVariableTypeParameters =
+                        if (currentStepKeyByVariables.size == 1)
+                            currentStepKeyByVariables.head.dataType.getScalaTypeName
+                        else
+                            currentStepKeyByVariables.map(v => v.dataType.getScalaTypeName).mkString("(", ",", ")")
+                    val compareAndResultTypeParameters = s"${intermediateResultCompareVariable1.dataType.getScalaTypeName}," +
+                        s"${intermediateResultCompareVariable2.dataType.getScalaTypeName},$resultKeyByVariableTypeParameters"
                     val action = EnumerateWithTwoComparisonsAction(relationInfo.getRelationId(),
                         joinVariables.map(currentRelationVariablesDict), joinVariables.map(v => v.dataType),
                         intermediateResultCompareVariableIndex1, intermediateResultCompareVariableIndex2,
-                        currentRelationIndices, intermediateResultIndices, optResultKeyIsInIntermediateResultAndIndicesTypes)
+                        currentRelationIndices, intermediateResultIndices, optResultKeyIsInIntermediateResultAndIndicesTypes,
+                        compareAndResultTypeParameters)
                     enumerateActions.append(action)
                     intermediateResultVariables.clear()
                     intermediateResultVariables.appendAll(newIntermediateVariables)
@@ -600,14 +639,26 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
 
                     val extraFilters = enumerationInfo.extraFilterFunctions.map(f => f(intermediateResultVariables, currentRelationVariables)("l", "r"))
 
+                    assert(headComparison.op.isInstanceOf[BinaryOperator])
+                    val op = headComparison.op.asInstanceOf[BinaryOperator]
+                    val resultKeyByVariableTypeParameters =
+                        if (currentStepKeyByVariables.size == 1)
+                            currentStepKeyByVariables.head.dataType.getScalaTypeName
+                        else
+                            currentStepKeyByVariables.map(v => v.dataType.getScalaTypeName).mkString("(", ",", ")")
+                    val typeParameters = s"${op.leftTypeName},${op.rightTypeName},${compareVariableInIntermediate.dataType.getScalaTypeName}," +
+                        s"${compareVariableInCurrent.dataType.getScalaTypeName},$resultKeyByVariableTypeParameters"
                     val action = EnumerateWithMoreThanTwoComparisonsAction(relationInfo.getRelationId(),
                         joinVariables.map(currentRelationVariablesDict), joinVariables.map(v => v.dataType),
                         compareKeyIndexInCurrent, compareKeyIndexInIntermediate, headComparison.op.getFuncLiteral(isReverse = isLeft),
-                        extraFilters, currentRelationIndices, intermediateResultIndices, optResultKeyIsInIntermediateResultAndIndicesTypes)
+                        extraFilters, currentRelationIndices, intermediateResultIndices, optResultKeyIsInIntermediateResultAndIndicesTypes, typeParameters)
                     enumerateActions.append(action)
                     intermediateResultVariables.clear()
                     intermediateResultVariables.appendAll(newIntermediateVariables)
             }
+
+            // save the keyByVariables. The last enumerate() need this info as the key type parameter.
+            previousStepKeyByVariables = currentStepKeyByVariables
         }
 
         if (countFinalResult) {

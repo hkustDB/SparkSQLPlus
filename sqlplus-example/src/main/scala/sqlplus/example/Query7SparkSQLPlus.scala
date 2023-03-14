@@ -13,7 +13,7 @@ object Query7SparkSQLPlus {
 		conf.setAppName("Query7SparkSQLPlus")
 		val spark = SparkSession.builder.config(conf).getOrCreate()
 
-		val intLessThan = (x: Int, y: Int) => x < y
+		val longLessThan = (x: Long, y: Long) => x < y
 
 		val v1 = spark.sparkContext.textFile(s"${args.head}/graph.dat").map(line => {
 			val fields = line.split(",")
@@ -21,30 +21,30 @@ object Query7SparkSQLPlus {
 		}).persist()
 		v1.count()
 
-		val v2 = v1.map(fields => ((fields(0)), 1)).reduceByKey(_ + _).map(x => Array[Any](x._1, x._2)).persist()
+		val v2 = v1.map(fields => ((fields(0)), 1L)).reduceByKey(_ + _).map(x => Array[Any](x._1, x._2)).persist()
 		v2.count()
 
-		val v3 = v1.map(fields => ((fields(0)), 1)).reduceByKey(_ + _).map(x => Array[Any](x._1, x._2)).persist()
+		val v3 = v1.map(fields => ((fields(0)), 1L)).reduceByKey(_ + _).map(x => Array[Any](x._1, x._2)).persist()
 		v3.count()
 
 		val v4 = v2.map(x => (x(0).asInstanceOf[Int], x(1)))
 		val v5 = v1.keyBy(x => x(1).asInstanceOf[Int])
 		val v6 = v5.appendExtraColumn(v4)
 		val v7 = v6.reKeyBy(x => x(0).asInstanceOf[Int])
-		val v8 = v7.filter(x => intLessThan(x._2(2).asInstanceOf[Int], x._2(0).asInstanceOf[Int]))
+		val v8 = v7.filter(x => longLessThan(x._2(2).asInstanceOf[Long], x._2(0).asInstanceOf[Int]))
 		val v9 = v5.semiJoin(v8)
 		val v10 = v9.reKeyBy(x => x(0).asInstanceOf[Int])
 		val v11 = v5.semiJoin(v10)
 		val v12 = v11.reKeyBy(x => x(0).asInstanceOf[Int])
 		val v13 = v12.groupBy()
-		val v14 = v13.sortValuesWith(1, (x: Int, y: Int) => intLessThan(y, x)).persist()
+		val v14 = v13.sortValuesWith[Long, Long, Int, Int](1, (x: Long, y: Long) => longLessThan(y, x)).persist()
 		val v15 = v14.extractFieldInHeadElement(1)
 		val v16 = v3.keyBy(x => x(0).asInstanceOf[Int])
 		val v17 = v16.appendExtraColumn(v15)
-		val v18 = v17.filter(x => intLessThan(x._2(1).asInstanceOf[Int], x._2(2).asInstanceOf[Int]))
+		val v18 = v17.filter(x => longLessThan(x._2(1).asInstanceOf[Long], x._2(2).asInstanceOf[Int]))
 
 		val v19 = v18.map(t => (t._2(0).asInstanceOf[Int], Array(t._2(1))))
-		val v20 = v19.enumerateWithOneComparison(v14, 0, 1, (x: Int, y: Int) => intLessThan(x, y), Array(0), Array(0), (l, r) => (r(1).asInstanceOf[Int]))
+		val v20 = v19.enumerateWithOneComparison[Long, Long, Long, Int, Int](v14, 0, 1, (x: Long, y: Long) => longLessThan(x, y), Array(0), Array(0), (l, r) => (r(1).asInstanceOf[Int]))
 		val v21 = v10.groupBy()
 		val v22 = v20.enumerateWithoutComparison(v21, Array(0, 1), Array(0), (l, r) => (r(1).asInstanceOf[Int]))
 		val v23 = v8.groupBy()
