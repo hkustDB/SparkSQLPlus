@@ -1,6 +1,10 @@
 package sqlplus.cli;
 
+import scala.collection.mutable.StringBuilder;
 import sqlplus.catalog.CatalogManager;
+import sqlplus.codegen.CodeGenerator;
+import sqlplus.codegen.SparkSQLPlusExampleCodeGenerator;
+import sqlplus.compile.CompileResult;
 import sqlplus.compile.SqlPlusCompiler;
 import sqlplus.convert.ConvertResult;
 import sqlplus.convert.LogicalPlanConverter;
@@ -68,9 +72,12 @@ public class CliFrontend {
             ConvertResult convertResult = converter.convert(logicalPlan);
 
             SqlPlusCompiler sqlPlusCompiler = new SqlPlusCompiler(variableManager);
-            String code = sqlPlusCompiler.compile(catalogManager, convertResult, packageName, objectName, true);
+            CompileResult compileResult = sqlPlusCompiler.compile(catalogManager, convertResult);
+            CodeGenerator codeGenerator = new SparkSQLPlusExampleCodeGenerator(compileResult);
+            StringBuilder builder = new StringBuilder();
+            codeGenerator.generate(builder);
 
-            FileUtils.writeStringToFile(new File(outputPath), code);
+            FileUtils.writeStringToFile(new File(outputPath), builder.toString());
         }
     }
 }

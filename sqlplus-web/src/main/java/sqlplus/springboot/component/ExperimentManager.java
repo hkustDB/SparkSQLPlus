@@ -1,5 +1,6 @@
 package sqlplus.springboot.component;
 
+import sqlplus.springboot.util.ExperimentJarBuilder;
 import sqlplus.springboot.util.ExperimentStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +11,8 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 public class ExperimentManager {
@@ -78,9 +81,23 @@ public class ExperimentManager {
                 // currently no running application
                 // try to take the next experiment from the queue
                 String head = pendingExperiments.take();
+                String classname = "";
+                if (head.startsWith("CustomQuery")) {
+                    Pattern pattern = Pattern.compile("CustomQuery(\\d+)-SparkSQL*");
+                    Matcher matcher = pattern.matcher(head);
+                    if (matcher.find()) {
+                        String index = matcher.group(1);
+                        classname = "sqlplus.example.custom.q" + index + "." + head.replaceAll("-", "");
+                    } else {
+                        fail(head, "invalid CustomQuery " + head);
+                    }
+                } else {
+                    classname = "sqlplus.example." + head.replaceAll("-", "");
+                }
                 Optional<String> optSubmissionId = handler.create(
-                        // experiment name: Query1-SparkCQC, class name: cqc.example.Query1SparkCQC
-                        "sqlplus.example." + head.replaceAll("-", ""),
+                        // experiment name: Query1-SparkSQLPlus, class name: cqc.example.Query1SparkSQLPlus
+                        // experiment name: CustomQuery1-SparkSQLPlus, class name: cqc.example.custom.q1.CustomQuery1SparkSQLPlus
+                        classname,
                         head);
                 if (optSubmissionId.isPresent()) {
                     LOGGER.info("get submission id " + optSubmissionId.get());
@@ -141,7 +158,12 @@ public class ExperimentManager {
 
     public synchronized void start() {
         if (status.equals(ExperimentStatus.STOPPED)) {
-            status = ExperimentStatus.RUNNING;
+            boolean isBuildSuccess = ExperimentJarBuilder.build();
+            if (!isBuildSuccess) {
+                LOGGER.error("failed to build experiment jar.");
+            } else {
+                status = ExperimentStatus.RUNNING;
+            }
         } else {
             LOGGER.error("can not add experiments to a running manager");
         }

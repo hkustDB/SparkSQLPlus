@@ -1,6 +1,6 @@
 package sqlplus.codegen
 
-import sqlplus.compile.{AppendCommonExtraColumnAction, AppendComparisonExtraColumnAction, ApplySelfComparisonAction, ApplySemiJoinAction, CountResultAction, CreateCommonExtraColumnAction, CreateComparisonExtraColumnAction, CreateComputationExtraColumnAction, CreateTransparentCommonExtraColumnAction, EndOfReductionAction, EnumerateAction, EnumerateWithMoreThanTwoComparisonsAction, EnumerateWithOneComparisonAction, EnumerateWithTwoComparisonsAction, EnumerateWithoutComparisonAction, FormatResultAction, ReduceAction, RelationInfo, RootPrepareEnumerationAction}
+import sqlplus.compile.{AppendCommonExtraColumnAction, AppendComparisonExtraColumnAction, ApplySelfComparisonAction, ApplySemiJoinAction, CountResultAction, CreateCommonExtraColumnAction, CreateComparisonExtraColumnAction, CreateComputationExtraColumnAction, CreateTransparentCommonExtraColumnAction, EndOfReductionAction, EnumerateAction, EnumerateWithMoreThanTwoComparisonsAction, EnumerateWithOneComparisonAction, EnumerateWithTwoComparisonsAction, EnumerateWithoutComparisonAction, FinalAction, FormatResultAction, ReduceAction, RelationInfo, RootPrepareEnumerationAction}
 import sqlplus.expression.{BinaryOperator, Operator, Variable}
 import sqlplus.graph.{AggregatedRelation, AuxiliaryRelation, BagRelation, TableScanRelation}
 import sqlplus.plan.table.SqlPlusTable
@@ -9,12 +9,11 @@ import sqlplus.types.{DataType, IntDataType}
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
-class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val sourceTables: Set[SqlPlusTable],
+abstract class AbstractSparkSQLPlusCodeGenerator(val comparisonOperators: Set[Operator], val sourceTables: Set[SqlPlusTable],
                               val aggregatedRelations: List[AggregatedRelation], val auxiliaryRelations: List[AuxiliaryRelation],
                               val bagRelations: List[BagRelation],
                               val relationIdToInfo: Map[Int, RelationInfo],
-                              val reduceActions: List[ReduceAction], val enumerateActions: List[EnumerateAction],
-                              val packageName: String, objectName: String)
+                              val reduceActions: List[ReduceAction], val enumerateActions: List[EnumerateAction], val finalAction: FinalAction)
     extends AbstractScalaCodeGenerator {
     val sourceTableNameToVariableNameDict = new mutable.HashMap[String, String]()
     val aggregatedRelationIdToVariableNameDict = new mutable.HashMap[Int, String]()
@@ -27,25 +26,29 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val source
     val sourceRelationVariableToKeyedVariableNameDict = new mutable.HashMap[(String, List[Int]), String]()
 
     val activeRelationRecord = new ActiveRelationRecord()
-
-    var lastRelationId: Int = -1
     
     val variableNameAssigner = new VariableNameAssigner
 
     val treeLikeArrayVariableNameToTypeParametersDict = new mutable.HashMap[String, String]()
     val treeLikeArrayDictionaryVariableNameToTypeParametersDict = new mutable.HashMap[String, String]()
 
-    override def getPackageName: String = packageName
+    def getAppName: String
+
+    def getMaster: String
+
+    def getLogger: String
+
+    def getQueryName: String
+
+    def getSourceTablePath(table: SqlPlusTable): String
 
     override def getImports: List[String] = List(
         "sqlplus.helper.ImplicitConversions._",
         "org.apache.spark.sql.SparkSession",
-        "org.apache.spark.{SparkConf, SparkContext}"
+        "org.apache.spark.SparkConf"
     )
 
     override def getType: String = "object"
-
-    override def getName: String = objectName
 
     override def getConstructorParameters: List[Parameter] = List()
 
@@ -54,6 +57,11 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val source
     override def getSuperClassParameters: List[String] = List()
 
     override def generateBody(builder: mutable.StringBuilder): Unit = {
+        if (getLogger.nonEmpty) {
+            indent(builder, 1).append("val LOGGER = LoggerFactory.getLogger(\"").append(getLogger).append("\")\n")
+            newLine(builder)
+        }
+
         generateExecuteMethod(builder)
     }
 
@@ -73,7 +81,9 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val source
 
         generateReduction(builder)
 
-        generateEnumeration(builder)
+        val variableName = generateEnumeration(builder)
+
+        generateFinalAction(builder, variableName, finalAction)
 
         generateSparkClose(builder)
         indent(builder, 1).append("}").append("\n")
@@ -81,8 +91,11 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val source
 
     private def generateSparkInit(builder: mutable.StringBuilder): Unit = {
         indent(builder, 2).append("val conf = new SparkConf()").append("\n")
-        indent(builder, 2).append("conf.setAppName(\"SparkSQLPlusExample\")").append("\n")
-        indent(builder, 2).append("conf.setMaster(\"local\")").append("\n")
+        indent(builder, 2).append("conf.setAppName(\"").append(getAppName).append("\")\n")
+
+        if (getMaster.nonEmpty)
+            indent(builder, 2).append("conf.setMaster(\"").append(getMaster).append("\")\n")
+
         indent(builder, 2).append("val spark = SparkSession.builder.config(conf).getOrCreate()").append("\n")
     }
 
@@ -108,9 +121,8 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val source
             val variableName = variableNameAssigner.getNewVariableName()
             sourceTableNameToVariableNameDict(table.getTableName) = variableName
 
-            val path = table.getTableProperties.get("path")
-            indent(builder, 2).append("val ").append(variableName).append(" = spark.sparkContext.textFile(\"")
-                .append(path).append("\").map(line => {").append("\n")
+            indent(builder, 2).append("val ").append(variableName).append(" = spark.sparkContext.textFile(")
+                .append(getSourceTablePath(table)).append(").map(line => {").append("\n")
             indent(builder, 3).append("val fields = line.split(\",\")").append("\n")
 
             val fields = table.getTableColumns.zipWithIndex.map(columnAndIndex => {
@@ -277,7 +289,6 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val source
                 case applySemiJoinAction: ApplySemiJoinAction =>
                     generateApplySemiJoinAction(builder, applySemiJoinAction)
                 case EndOfReductionAction(relationId) =>
-                    lastRelationId = relationId
             }
         }
     }
@@ -523,7 +534,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val source
         }
     }
 
-    private def generateEnumeration(builder: mutable.StringBuilder): Unit = {
+    private def generateEnumeration(builder: mutable.StringBuilder): String = {
         newLine(builder)
 
         // the enumerateActions must be a RootPrepareEnumerationAction followed by 0 or more other EnumerationActions
@@ -536,7 +547,7 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val source
                 "followed by 0 or more other EnumerationActions")
         }
 
-        val finalVariableName: String = enumerateActions.tail.foldLeft(intermediateVariableName)((v, ea) => {
+        enumerateActions.tail.foldLeft(intermediateVariableName)((v, ea) => {
             ea match {
                 case enumerateWithoutComparisonAction: EnumerateWithoutComparisonAction =>
                     generateEnumerateWithoutComparisonAction(builder, enumerateWithoutComparisonAction, v)
@@ -546,10 +557,6 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val source
                     generateEnumerateWithTwoComparisonsAction(builder, enumerateWithTwoComparisonsAction, v)
                 case enumerateWithMoreThanTwoComparisonsAction: EnumerateWithMoreThanTwoComparisonsAction =>
                     generateEnumerateWithMoreThanTwoComparisonsAction(builder, enumerateWithMoreThanTwoComparisonsAction, v)
-                case formatResultAction: FormatResultAction =>
-                    generateFormatResultAction(builder, formatResultAction, v)
-                case CountResultAction =>
-                    generateCountResultAction(builder, v)
                 case _ =>
                     throw new RuntimeException("enumerateActions must be a RootPrepareEnumerationAction " +
                         "followed by 0 or more other EnumerationActions")
@@ -704,20 +711,36 @@ class SparkScalaCodeGenerator(val comparisonOperators: Set[Operator], val source
     }
 
     def generateFormatResultAction(builder: StringBuilder, action: FormatResultAction,
-                                   intermediateResultVariableName: String): String = {
+                                   intermediateResultVariableName: String): Unit = {
         val formatters = action.formatters
         val mapFunc = formatters.indices.map(i => formatters(i).apply(s"x._2($i)")).mkString("x => Array(", ", ", ")")
         val newVariableName = variableNameAssigner.getNewVariableName()
+        newLine(builder)
         indent(builder, 2).append("val ").append(newVariableName).append(" = ")
             .append(intermediateResultVariableName).append(".map(").append(mapFunc).append(")").append("\n")
         indent(builder, 2).append(newVariableName).append(".take(20).map(r => r.mkString(\",\")).foreach(println)").append("\n")
         indent(builder, 2).append("println(\"only showing top 20 rows\")").append("\n")
-        ""  // this must be the final action
     }
 
-    def generateCountResultAction(builder: StringBuilder, intermediateResultVariableName: String): String = {
-        indent(builder, 2).append(intermediateResultVariableName).append(".count()").append("\n")
-        ""  // this must be the final action
+    def generateCountResultAction(builder: StringBuilder, intermediateResultVariableName: String): Unit = {
+        if (getLogger.nonEmpty) {
+            newLine(builder)
+            indent(builder, 2).append("val ts1 = System.currentTimeMillis()").append("\n")
+            indent(builder, 2).append("val cnt = ").append(intermediateResultVariableName).append(".count()").append("\n")
+            indent(builder, 2).append("val ts2 = System.currentTimeMillis()").append("\n")
+            indent(builder, 2).append("LOGGER.info(\"").append(getQueryName).append("-SparkSQLPlus cnt: \" + cnt)").append("\n")
+            indent(builder, 2).append("LOGGER.info(\"").append(getQueryName).append("-SparkSQLPlus time: \" + (ts2 - ts1) / 1000f)").append("\n")
+        } else {
+            newLine(builder)
+            indent(builder, 2).append(intermediateResultVariableName).append(".count()").append("\n")
+        }
+    }
+
+    def generateFinalAction(builder: StringBuilder, finalVariableName: String, action: FinalAction): Unit = {
+        action match {
+            case f: FormatResultAction => generateFormatResultAction(builder, f, finalVariableName)
+            case CountResultAction => generateCountResultAction(builder, finalVariableName)
+        }
     }
 
     def getResultKeySelectorInEnumerations(optResultKeyIsInIntermediateResultAndIndicesTypes: Option[List[(Boolean, Int, DataType)]]): Option[String] = {

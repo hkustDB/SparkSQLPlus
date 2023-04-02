@@ -2,7 +2,6 @@ package sqlplus.compile
 
 import sqlplus.expression.VariableOrdering._
 import sqlplus.catalog.CatalogManager
-import sqlplus.codegen.SparkScalaCodeGenerator
 import sqlplus.convert.ConvertResult
 import sqlplus.expression.{BinaryOperator, ComputeExpression, Expression, LiteralExpression, Operator, SingleVariableExpression, UnaryOperator, Variable, VariableManager}
 import sqlplus.graph.{AggregatedRelation, AuxiliaryRelation, BagRelation, Comparison, Relation, TableScanRelation}
@@ -13,7 +12,7 @@ import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
 class SqlPlusCompiler(val variableManager: VariableManager) {
-    def compile(catalogManager: CatalogManager, convertResult: ConvertResult, packageName: String, objectName: String, countFinalResult: Boolean): String = {
+    def compile(catalogManager: CatalogManager, convertResult: ConvertResult): CompileResult = {
         val aggregatedRelations: List[AggregatedRelation] = convertResult.relations
             .filter(r => r.isInstanceOf[AggregatedRelation])
             .map(r => r.asInstanceOf[AggregatedRelation])
@@ -119,16 +118,13 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
         val subsetRelationIds = convertResult.joinTree.subset.map(r => r.getRelationId())
         val subsetReduceOrderList = reduceOrderList.filter(info => subsetRelationIds.contains(info.getRelation().getRelationId()))
 
-        val enumerationActions = enumerate(lastRelationInfo, subsetReduceOrderList, finalOutputVariables, countFinalResult)
+        val enumerateResult = enumerate(lastRelationInfo, subsetReduceOrderList, finalOutputVariables)
 
-        val appearingComparisonOperators = comparisonIdToInfo.values.map(info => info.getOperator()).toSet
-        val codeGenerator = new SparkScalaCodeGenerator(appearingComparisonOperators, sourceTables, aggregatedRelations,
+        val comparisonOperators = comparisonIdToInfo.values.map(info => info.getOperator()).toSet
+
+        CompileResult(comparisonOperators, sourceTables, aggregatedRelations,
             auxiliaryRelations, bagRelations,
-            relationIdToInfo, reduceActions.toList, enumerationActions, packageName, objectName)
-        val builder = new mutable.StringBuilder()
-        codeGenerator.generate(builder)
-
-        builder.toString()
+            relationIdToInfo, reduceActions.toList, enumerateResult._1, enumerateResult._2)
     }
 
     def reduceRelation(currentRelationInfo: RelationInfo, optParentRelationInfo: Option[RelationInfo], joinVariables: List[Variable],
@@ -535,7 +531,7 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
     }
 
     def enumerate(lastRelationInfo: RelationInfo, subsetReduceOrderList: List[RelationInfo],
-                  finalOutputVariables: List[Variable], countFinalResult: Boolean): List[EnumerateAction] = {
+                  finalOutputVariables: List[Variable]): (List[EnumerateAction], FormatResultAction) = {
         // preprocess the enumeration list
         // reverse the subsetReduceOrderList since we preprocess in a top-down and then bottom-up manner
         val (actualEnumerateRelationList, keepVariables, keyByVariables, rootKeepVariables, rootKeyByVariables)
@@ -661,14 +657,9 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
             previousStepKeyByVariables = currentStepKeyByVariables
         }
 
-        if (countFinalResult) {
-            enumerateActions.append(CountResultAction)
-        } else {
-            val finalVariableFormatters = finalOutputVariables.map(v => v.dataType.format(_))
-            enumerateActions.append(FormatResultAction(finalVariableFormatters))
-        }
+        val finalVariableFormatters = finalOutputVariables.map(v => v.dataType.format(_))
 
-        enumerateActions.toList
+        (enumerateActions.toList, FormatResultAction(finalVariableFormatters))
     }
 
     def getExtractIndices(currentRelationVariables: List[Variable], intermediateResultVariables: List[Variable],
@@ -844,3 +835,8 @@ case class EnumerationInfo(joinVariables: List[Variable], incidentComparisonsAnd
                            extraFilterFunctions: List[(ListBuffer[Variable], List[Variable]) => ((String, String) => String)])
 
 case class SemiJoinTask(childRelationId: Int, joinKeyIndicesInChild: List[Int], joinVariables: List[Variable])
+
+case class CompileResult(comparisonOperators: Set[Operator], sourceTables: Set[SqlPlusTable], aggregatedRelations: List[AggregatedRelation],
+                         auxiliaryRelations: List[AuxiliaryRelation], bagRelations: List[BagRelation],
+                         relationIdToInfo: Map[Int, RelationInfo], reduceActions: List[ReduceAction],
+                         enumerateActions: List[EnumerateAction], formatResultAction: FormatResultAction)

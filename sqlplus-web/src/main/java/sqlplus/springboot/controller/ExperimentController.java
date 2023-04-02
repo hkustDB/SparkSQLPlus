@@ -11,6 +11,12 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+import sqlplus.springboot.util.CustomQueryManager;
+
+import java.lang.reflect.Array;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 public class ExperimentController {
@@ -35,6 +41,20 @@ public class ExperimentController {
         LOGGER.info(request.toString());
         request.getExperiments().stream().sorted().forEach(manager::addPendingExperiment);
         manager.start();
+
+        return result;
+    }
+
+    @GetMapping("/experiment/queries")
+    public Result queries() {
+        Result result = new Result();
+        result.setCode(200);
+        String[] builtinQueries = new String[]{"Query1", "Query2", "Query3", "Query4", "Query5", "Query6", "Query7", "Query8"};
+        List<String> customQueries = CustomQueryManager.list("examples/query/custom/");
+
+        List<String> allQueries = Arrays.stream(builtinQueries).collect(Collectors.toList());
+        allQueries.addAll(customQueries);
+        result.setData(allQueries);
 
         return result;
     }

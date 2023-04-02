@@ -67,5 +67,7 @@ case class EnumerateWithMoreThanTwoComparisonsAction(relationId: Int, joinKeyInd
                                                      typeParameters: String
                                                     ) extends EnumerateAction
 
-case class FormatResultAction(formatters: List[String => String]) extends EnumerateAction
-case object CountResultAction extends EnumerateAction
+sealed trait FinalAction
+
+case class FormatResultAction(formatters: List[String => String]) extends FinalAction
+case object CountResultAction extends FinalAction

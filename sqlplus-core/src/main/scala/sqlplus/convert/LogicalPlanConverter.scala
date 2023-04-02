@@ -23,8 +23,8 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
     val algorithm: GyoAlgorithm = new GyoAlgorithm
     var suffix: Int = 0
 
-    def runGyo(root: RelNode): (List[(JoinTree, ComparisonHyperGraph)], List[Variable]) = {
-        val (relations, comparisons, outputVariables) = traverseLogicalPlan(root)
+    def runGyo(root: RelNode): (List[(JoinTree, ComparisonHyperGraph)], List[Variable], String) = {
+        val (relations, comparisons, outputVariables, isFull) = traverseLogicalPlan(root)
         val relationalHyperGraph = relations.foldLeft(RelationalHyperGraph.EMPTY)((g, r) => g.addHyperEdge(r))
 
         val gyoResult = algorithm.run(relationalHyperGraph, outputVariables.toSet)
@@ -48,7 +48,7 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
                 List.empty
         })
 
-        (joinTreesWithComparisonHyperGraph, outputVariables)
+        (joinTreesWithComparisonHyperGraph, outputVariables, isFull)
     }
 
     def candidatesWithLimit(list: List[(JoinTree, ComparisonHyperGraph)], limit: Int): List[(JoinTree, ComparisonHyperGraph)] = {
@@ -58,7 +58,7 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
     }
 
     def convert(root: RelNode): ConvertResult = {
-        val (joinTreesWithComparisonHyperGraph, outputVariables) = runGyo(root)
+        val (joinTreesWithComparisonHyperGraph, outputVariables, _) = runGyo(root)
 
         // select the joinTree and ComparisonHyperGraph with minimum degree
         val selected = joinTreesWithComparisonHyperGraph.minBy(t => t._2.getDegree())
@@ -66,7 +66,7 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
         ConvertResult(selected._1.getEdges().flatMap(e => Set(e.getSrc, e.getDst)).toList, outputVariables, selected._1, selected._2)
     }
 
-    def traverseLogicalPlan(root: RelNode): (List[Relation], List[(String, Expression, Expression)], List[Variable]) = {
+    def traverseLogicalPlan(root: RelNode): (List[Relation], List[(String, Expression, Expression)], List[Variable], String) = {
         assert(root.isInstanceOf[LogicalProject])
         assert(root.getInput(0).isInstanceOf[LogicalFilter])
         assert(root.getInput(0).getInput(0).isInstanceOf[LogicalJoin])
@@ -126,8 +126,9 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
         })
 
         val outputVariables = logicalProject.getProjects.toList.map(p => variableTable(p.asInstanceOf[RexInputRef].getIndex))
+        val isFull = variableTable.forall(v => outputVariables.contains(v))
 
-        (relations, comparisons, outputVariables)
+        (relations, comparisons, outputVariables, if (isFull) "full" else "non-full")
     }
 
     private def visitLogicalRelNode(relNode: RelNode, variableTable: Array[Variable], offset: Int): List[Relation] = relNode match {
