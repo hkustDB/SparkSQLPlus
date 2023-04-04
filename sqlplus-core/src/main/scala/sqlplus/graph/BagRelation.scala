@@ -9,7 +9,7 @@ class BagRelation(bag: Set[Relation]) extends Relation {
 
     override def getTableName(): String = inside.map(r => r.getTableName()).mkString("Bag(", ",", ")")
 
-    override def getTableDisplayName(): String = inside.map(r => r.getTableName()).mkString("x")
+    override def getTableDisplayName(): String = s"bag${relationId}"
 
     override def getVariableList(): List[Variable] = variableList
 

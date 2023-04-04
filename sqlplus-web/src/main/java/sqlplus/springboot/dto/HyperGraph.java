@@ -43,7 +43,16 @@ public class HyperGraph {
         // a node in HyperGraph is an edge in join tree
         hyperGraph.setNodes(sortedEdges);
         Set<Comparison> comparisons = scala.collection.JavaConverters.setAsJavaSet(comparisonHyperGraph.getEdges());
-        List<List<String>> edges = (new ArrayList<>(comparisons)).stream().map(HyperGraph::convertComparisonToStringList).collect(Collectors.toList());
+        Set<Comparison> nonSelfComparisons = comparisons.stream().filter(c -> {
+           if (c.getNodes().size() > 1) {
+               return true;
+           } else {
+               // comparison has only one JoinTreeEdge, check src and dst
+               JoinTreeEdge joinTreeEdge = c.getNodes().head();
+               return joinTreeEdge.getSrc().getRelationId() != joinTreeEdge.getDst().getRelationId();
+           }
+        }).collect(Collectors.toSet());
+        List<List<String>> edges = (new ArrayList<>(nonSelfComparisons)).stream().map(HyperGraph::convertComparisonToStringList).collect(Collectors.toList());
         hyperGraph.setEdges(edges);
 
         return hyperGraph;
