@@ -4,40 +4,40 @@ import java.util.List;
 import java.util.Map;
 
 public class ExperimentStatusResponse {
-    private String status;
-    private List<String> experimentNames;
-    private Map<String, String> experimentStatus;
-    private Map<String, Double> experimentResults;
+    private String experimentState;
+    private List<String> experimentTaskNames;
+    private Map<String, String> experimentTaskStates;
+    private Map<String, Double> experimentTaskResults;
 
-    public String getStatus() {
-        return status;
+    public String getExperimentState() {
+        return experimentState;
     }
 
-    public void setStatus(String status) {
-        this.status = status;
+    public void setExperimentState(String experimentState) {
+        this.experimentState = experimentState;
     }
 
-    public List<String> getExperimentNames() {
-        return experimentNames;
+    public List<String> getExperimentTaskNames() {
+        return experimentTaskNames;
     }
 
-    public void setExperimentNames(List<String> experimentNames) {
-        this.experimentNames = experimentNames;
+    public void setExperimentTaskNames(List<String> experimentTaskNames) {
+        this.experimentTaskNames = experimentTaskNames;
     }
 
-    public Map<String, String> getExperimentStatus() {
-        return experimentStatus;
+    public Map<String, String> getExperimentTaskStates() {
+        return experimentTaskStates;
     }
 
-    public void setExperimentStatus(Map<String, String> experimentStatus) {
-        this.experimentStatus = experimentStatus;
+    public void setExperimentTaskStates(Map<String, String> experimentTaskStates) {
+        this.experimentTaskStates = experimentTaskStates;
     }
 
-    public Map<String, Double> getExperimentResults() {
-        return experimentResults;
+    public Map<String, Double> getExperimentTaskResults() {
+        return experimentTaskResults;
     }
 
-    public void setExperimentResults(Map<String, Double> experimentResults) {
-        this.experimentResults = experimentResults;
+    public void setExperimentTaskResults(Map<String, Double> experimentTaskResults) {
+        this.experimentTaskResults = experimentTaskResults;
     }
 }

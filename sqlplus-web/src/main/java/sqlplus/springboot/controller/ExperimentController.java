@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import sqlplus.springboot.util.CustomQueryManager;
 
-import java.lang.reflect.Array;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -39,8 +38,19 @@ public class ExperimentController {
         Result result = new Result();
         result.setCode(200);
         LOGGER.info(request.toString());
+        manager.clear();
         request.getExperiments().stream().sorted().forEach(manager::addPendingExperiment);
         manager.start();
+
+        return result;
+    }
+
+    @PostMapping("/experiment/stop")
+    public Result stop() {
+        Result result = new Result();
+        result.setCode(200);
+        LOGGER.info("stop experiments.");
+        manager.stop();
 
         return result;
     }
@@ -63,10 +73,10 @@ public class ExperimentController {
         Result result = new Result();
         result.setCode(200);
         ExperimentStatusResponse response = new ExperimentStatusResponse();
-        response.setStatus(manager.getStatus().status);
-        response.setExperimentNames(manager.getExperimentNames());
-        response.setExperimentStatus(manager.getExperimentStatus());
-        response.setExperimentResults(manager.getExperimentResults());
+        response.setExperimentState(manager.getExperimentState().state);
+        response.setExperimentTaskNames(manager.getExperimentNames());
+        response.setExperimentTaskStates(manager.getExperimentTaskStates());
+        response.setExperimentTaskResults(manager.getExperimentTaskResults());
         result.setData(response);
         return result;
     }

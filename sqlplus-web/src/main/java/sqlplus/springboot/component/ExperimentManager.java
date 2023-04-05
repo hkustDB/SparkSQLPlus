@@ -1,31 +1,33 @@
 package sqlplus.springboot.component;
 
 import sqlplus.springboot.util.ExperimentJarBuilder;
-import sqlplus.springboot.util.ExperimentStatus;
+import sqlplus.springboot.util.ExperimentState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import sqlplus.springboot.util.ExperimentTaskState;
 
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Component
 public class ExperimentManager {
     private final static Logger LOGGER = LoggerFactory.getLogger(ExperimentManager.class);
 
-    private ExperimentStatus status = ExperimentStatus.STOPPED;
+    private ExperimentState experimentState = ExperimentState.STOPPED;
 
     @Value("${experiment.timeout:3600}")
     private int timeout;
 
     private final List<String> experimentNames = new ArrayList<>();
-    private final Map<String, String> experimentStatus = new HashMap<>();
-    private final Map<String, Double> experimentResults = new HashMap<>();
+    private final Map<String, ExperimentTaskState> experimentTaskStates = new HashMap<>();
+    private final Map<String, Double> experimentTaskResults = new HashMap<>();
 
     private Optional<String> runningExperimentName = Optional.empty();
 
@@ -46,36 +48,52 @@ public class ExperimentManager {
     }
 
     @Scheduled(fixedDelay = 10000)
-    public void schedule() throws InterruptedException {
-        if (status == ExperimentStatus.RUNNING) {
+    public synchronized void schedule() throws InterruptedException {
+        if (experimentState == ExperimentState.RUNNING) {
             if (runningExperimentName.isPresent()) {
                 // we have submitted an application
                 // check whether it has already finished
                 Optional<String> optDriverState = handler.status(runningExperimentSubmissionId);
                 if (optDriverState.isPresent()) {
-                    if (!optDriverState.get().equalsIgnoreCase("FINISHED")) {
-                        long duration = System.currentTimeMillis() - runningExperimentSubmitTimestamp;
-                        // check whether it has exceeded the time limit
-                        if (duration >= timeout * 1000L) {
-                            LOGGER.info(runningExperimentName.get() + " has run for more than " + timeout + " s.");
-                            handler.kill(runningExperimentSubmissionId);
-                            fail(runningExperimentName.get(), "timeout");
-                            cleanRunningExperimentInfo();
-                        }
-                    } else {
+                    if (optDriverState.get().equalsIgnoreCase("FINISHED")) {
                         // the application has finished, retrieve the result
                         Optional<Double> time = retriever.retrieve(runningExperimentName.get(), runningExperimentSubmitTimestamp);
                         if (time.isPresent()) {
                             LOGGER.info(runningExperimentName.get() + " running time: " + time);
-                            success(runningExperimentName.get(), time.get());
+                            experimentTaskSuccess(runningExperimentName.get(), time.get());
                         } else {
                             LOGGER.info("can not retrieve result of " + runningExperimentName.get());
-                            fail(runningExperimentName.get(), "error");
+                            experimentTaskFail(runningExperimentName.get());
                         }
                         cleanRunningExperimentInfo();
+                        if (pendingExperiments.isEmpty()) {
+                            experimentState = this.experimentState.finish();
+                        }
+                    } else if (optDriverState.get().equalsIgnoreCase("KILLED")) {
+                        experimentTaskFail(runningExperimentName.get());
+                        cleanRunningExperimentInfo();
+                        if (pendingExperiments.isEmpty()) {
+                            experimentState = this.experimentState.finish();
+                        }
+                    } else if (optDriverState.get().equalsIgnoreCase("RUNNING")) {
+                        long duration = System.currentTimeMillis() - runningExperimentSubmitTimestamp;
+                        // check whether it has exceeded the time limit
+                        if (duration >= timeout * 1000L) {
+                            LOGGER.info(runningExperimentName.get() + " has run for more than " + timeout + " s.");
+                            boolean killed = handler.kill(runningExperimentSubmissionId);
+                            if (killed) {
+                                experimentTaskTimeout(runningExperimentName.get());
+                                cleanRunningExperimentInfo();
+                                if (pendingExperiments.isEmpty()) {
+                                    experimentState = this.experimentState.finish();
+                                }
+                            }
+                        }
+                    } else {
+                        LOGGER.error("received unrecognized state " + optDriverState.get());
                     }
                 } else {
-                    LOGGER.error("status failed");
+                    LOGGER.error("status failed. check the connection with Spark master.");
                 }
             } else {
                 // currently no running application
@@ -89,7 +107,8 @@ public class ExperimentManager {
                         String index = matcher.group(1);
                         classname = "sqlplus.example.custom.q" + index + "." + head.replaceAll("-", "");
                     } else {
-                        fail(head, "invalid CustomQuery " + head);
+                        LOGGER.error("invalid CustomQuery " + head);
+                        experimentTaskFail(head);
                     }
                 } else {
                     classname = "sqlplus.example." + head.replaceAll("-", "");
@@ -102,11 +121,53 @@ public class ExperimentManager {
                 if (optSubmissionId.isPresent()) {
                     LOGGER.info("get submission id " + optSubmissionId.get());
                     setRunningExperimentInfo(optSubmissionId.get(), head);
-                    begin(head);
+                    experimentTaskBegin(head);
                 } else {
                     LOGGER.error("create failed");
                     cleanRunningExperimentInfo();
-                    fail(head, "error");
+                    experimentTaskFail(head);
+                }
+            }
+        } else if (experimentState == ExperimentState.STOPPING) {
+            if (runningExperimentName.isPresent()) {
+                // we have submitted an application
+                // check whether it has already finished
+                Optional<String> optDriverState = handler.status(runningExperimentSubmissionId);
+                if (optDriverState.isPresent()) {
+                    if (optDriverState.get().equalsIgnoreCase("FINISHED")) {
+                        // the application has finished, retrieve the result
+                        Optional<Double> time = retriever.retrieve(runningExperimentName.get(), runningExperimentSubmitTimestamp);
+                        if (time.isPresent()) {
+                            LOGGER.info(runningExperimentName.get() + " running time: " + time);
+                            experimentTaskSuccess(runningExperimentName.get(), time.get());
+                        } else {
+                            LOGGER.info("can not retrieve result of " + runningExperimentName.get());
+                            experimentTaskFail(runningExperimentName.get());
+                        }
+                        cleanRunningExperimentInfo();
+                        pendingExperiments.forEach(this::experimentTaskCancel);
+                        pendingExperiments.clear();
+                        experimentState = this.experimentState.terminate();
+                    } else if (optDriverState.get().equalsIgnoreCase("KILLED")) {
+                        experimentTaskFail(runningExperimentName.get());
+                        cleanRunningExperimentInfo();
+                        pendingExperiments.forEach(this::experimentTaskCancel);
+                        pendingExperiments.clear();
+                        experimentState = this.experimentState.terminate();
+                    } else if (optDriverState.get().equalsIgnoreCase("RUNNING")) {
+                        boolean killed = handler.kill(runningExperimentSubmissionId);
+                        if (killed) {
+                            experimentTaskFail(runningExperimentName.get());
+                            cleanRunningExperimentInfo();
+                            pendingExperiments.forEach(this::experimentTaskCancel);
+                            pendingExperiments.clear();
+                            experimentState = this.experimentState.terminate();
+                        }
+                    } else {
+                        LOGGER.error("received unrecognized state " + optDriverState.get());
+                    }
+                } else {
+                    LOGGER.error("status failed. check the connection with Spark master.");
                 }
             }
         }
@@ -124,24 +185,36 @@ public class ExperimentManager {
         runningExperimentName = Optional.of(experimentName);
     }
 
-    public ExperimentStatus getStatus() {
-        return status;
+    public ExperimentState getExperimentState() {
+        return experimentState;
     }
 
     public List<String> getExperimentNames() {
         return experimentNames;
     }
 
-    public Map<String, String> getExperimentStatus() {
-        return experimentStatus;
+    public Map<String, String> getExperimentTaskStates() {
+        return experimentTaskStates.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().state));
     }
 
-    public Map<String, Double> getExperimentResults() {
-        return experimentResults;
+    public Map<String, Double> getExperimentTaskResults() {
+        return experimentTaskResults;
+    }
+
+    public synchronized void clear() {
+        if (experimentState.equals(ExperimentState.STOPPED)) {
+            experimentNames.clear();
+            pendingExperiments.clear();
+            experimentTaskStates.clear();
+            experimentTaskResults.clear();
+            runningExperimentName = Optional.empty();
+            runningExperimentSubmissionId = "";
+            runningExperimentSubmitTimestamp = 0L;
+        }
     }
 
     public synchronized void addPendingExperiment(String experiment) {
-        if (status.equals(ExperimentStatus.STOPPED)) {
+        if (experimentState.equals(ExperimentState.STOPPED)) {
             // Query1, Query2, ...
             experimentNames.add(experiment);
 
@@ -149,37 +222,56 @@ public class ExperimentManager {
             String sparkSqlExperiment = experiment + "-SparkSQL";
             pendingExperiments.add(sparkCqcExperiment);
             pendingExperiments.add(sparkSqlExperiment);
-            experimentStatus.put(sparkCqcExperiment, "pending");
-            experimentStatus.put(sparkSqlExperiment, "pending");
+            experimentTaskStates.put(sparkCqcExperiment, ExperimentTaskState.PENDING);
+            experimentTaskStates.put(sparkSqlExperiment, ExperimentTaskState.PENDING);
         } else {
             LOGGER.error("can not add experiments to a running manager");
         }
     }
 
     public synchronized void start() {
-        if (status.equals(ExperimentStatus.STOPPED)) {
+        if (experimentState.equals(ExperimentState.STOPPED)) {
+            experimentState = experimentState.compile();
             boolean isBuildSuccess = ExperimentJarBuilder.build();
             if (!isBuildSuccess) {
+                experimentTaskStates.keySet().forEach(k -> experimentTaskStates.put(k, ExperimentTaskState.FAILED));
+                experimentState = experimentState.fail();
                 LOGGER.error("failed to build experiment jar.");
             } else {
-                status = ExperimentStatus.RUNNING;
+                experimentState = experimentState.submit();
             }
         } else {
-            LOGGER.error("can not add experiments to a running manager");
+            LOGGER.error("experiment has been started.");
         }
     }
 
-    private synchronized void begin(String name) {
-        experimentStatus.put(name, "running");
+    public synchronized void stop() {
+        if (experimentState.equals(ExperimentState.RUNNING)) {
+            experimentState = experimentState.stop();
+        }
     }
 
-    private synchronized void success(String name, Double time) {
-        experimentStatus.put(name, "finished");
-        experimentResults.put(name, time);
+    private synchronized void experimentTaskBegin(String name) {
+        experimentTaskStates.put(name, experimentTaskStates.get(name).submit());
     }
 
-    private synchronized void fail(String name, String state) {
+    private synchronized void experimentTaskSuccess(String name, Double time) {
+        experimentTaskStates.put(name, experimentTaskStates.get(name).finish());
+        experimentTaskResults.put(name, time);
+    }
+
+    private synchronized void experimentTaskFail(String name) {
         // timeout or error
-        experimentStatus.put(name, state);
+        experimentTaskStates.put(name, experimentTaskStates.get(name).fail());
+    }
+
+    private synchronized void experimentTaskTimeout(String name) {
+        // timeout or error
+        experimentTaskStates.put(name, experimentTaskStates.get(name).timeout());
+    }
+
+    private synchronized void experimentTaskCancel(String name) {
+        // timeout or error
+        experimentTaskStates.put(name, experimentTaskStates.get(name).cancel());
     }
 }
