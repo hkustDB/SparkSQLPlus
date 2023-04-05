@@ -15,10 +15,7 @@ import sqlplus.convert.ConvertResult;
 import sqlplus.convert.LogicalPlanConverter;
 import sqlplus.expression.Variable;
 import sqlplus.expression.VariableManager;
-import sqlplus.graph.ComparisonHyperGraph;
-import sqlplus.graph.JoinTree;
-import sqlplus.graph.JoinTreeEdge;
-import sqlplus.graph.Relation;
+import sqlplus.graph.*;
 import sqlplus.parser.SqlPlusParser;
 import sqlplus.parser.ddl.SqlCreateTable;
 import sqlplus.plan.SqlPlusPlanner;
@@ -32,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 import scala.Tuple2;
 import sqlplus.plan.table.SqlPlusTable;
 import sqlplus.springboot.dto.*;
+import sqlplus.springboot.dto.HyperGraph;
 import sqlplus.springboot.util.CustomQueryManager;
 
 import java.io.File;
@@ -108,18 +106,90 @@ public class CompileController {
         CompileSubmitResponse response = new CompileSubmitResponse();
         response.setCandidates(candidates.stream().map(tuple -> {
             Candidate candidate = new Candidate();
-            Tree tree = Tree.fromJoinTree(tuple._1);
+            // extract all relations
             relations = extractRelations(tuple._1);
-            Set<JoinTreeEdge> edges = scala.collection.JavaConverters.setAsJavaSet(tuple._1.getEdges());
-            List<String> edgeStrings = edges.stream().map(JoinTreeEdge::mkUniformString).collect(Collectors.toList());
-            List<String> sortedEdgeStrings = edgeStrings.stream().sorted().collect(Collectors.toList());
-            HyperGraph hyperGraph = HyperGraph.fromComparisonHyperGraphAndRelations(tuple._2, sortedEdgeStrings);
+            List<BagRelation> bagRelations = relations.stream().filter(r -> r instanceof BagRelation).map(r -> (BagRelation)r).collect(Collectors.toList());
+            // assign new name to bag relations
+            Map<String, String> bagRelationNames = new HashMap<>();
+            int suffix = 1;
+            for (int i = 0; i < bagRelations.size(); i++) {
+                bagRelationNames.put(bagRelations.get(i).getTableDisplayName(), "B" + suffix);
+                suffix += 1;
+            }
+
+            Tree tree = Tree.fromJoinTree(tuple._1, bagRelationNames);
+            Set<JoinTreeEdge> joinTreeEdges = scala.collection.JavaConverters.setAsJavaSet(tuple._1.getEdges());
+            List<String> joinTreeEdgeStrings = new ArrayList<>();
+            Map<JoinTreeEdge, String> joinTreeEdgeToStringMap = new HashMap<>();
+
+            joinTreeEdges.forEach(e -> {
+                String s = mkUniformStringForJoinTreeEdge(e, bagRelationNames);
+                joinTreeEdgeStrings.add(s);
+                joinTreeEdgeToStringMap.put(e, s);
+            });
+            List<String> sortedEdgeStrings = joinTreeEdgeStrings.stream().sorted().collect(Collectors.toList());
+            HyperGraph hyperGraph = HyperGraph.fromComparisonHyperGraphAndRelations(tuple._2, sortedEdgeStrings, joinTreeEdgeToStringMap);
+
+            Map<String, Object> bags = new HashMap<>();
+            bagRelations.forEach(b -> visitBagRelation(b, bagRelationNames, bags));
+
             candidate.setTree(tree);
             candidate.setHyperGraph(hyperGraph);
+            candidate.setBags(bags);
             return candidate;
         }).collect(Collectors.toList()));
         result.setData(response);
         return result;
+    }
+
+    private String mkUniformStringForJoinTreeEdge(JoinTreeEdge edge, Map<String, String> bagRelationNames) {
+        String name1 = "";
+        String name2 = "";
+
+        if (edge.getSrc() instanceof BagRelation) {
+            name1 = bagRelationNames.get(edge.getSrc().getTableDisplayName());
+        } else {
+            name1 = edge.getSrc().getTableDisplayName();
+        }
+
+        if (edge.getDst() instanceof BagRelation) {
+            name2 = bagRelationNames.get(edge.getDst().getTableDisplayName());
+        } else {
+            name2 = edge.getDst().getTableDisplayName();
+        }
+
+        if (name1.compareToIgnoreCase(name2) > 0) {
+            return name1 + "-" + name2;
+        } else {
+            return name2 + "-" + name1;
+        }
+    }
+
+    private void visitBagRelation(BagRelation bagRelation, Map<String, String> bagRelationNames, Map<String, Object> bags) {
+        String name = bagRelation.getTableDisplayName();
+        Map<String, Object> bag = new HashMap<>();
+        List<Map<String, Object>> internals = new ArrayList<>();
+        List<Relation> internalRelations = scala.collection.JavaConverters.seqAsJavaList(bagRelation.getInternalRelations());
+        internalRelations.forEach(r -> {
+            Map<String, Object> map = new HashMap<>();
+            map.put("relation", r.getTableDisplayName());
+            map.put("variables", new ArrayList<>(scala.collection.JavaConverters.seqAsJavaList(r.getVariableList()).stream().map(Variable::name).collect(Collectors.toList())));
+            internals.add(map);
+        });
+
+        List<List<String>> connections = new ArrayList<>();
+        for (int i = 0; i < internals.size() - 1; i++) {
+            for (int j = i + 1; j < internals.size(); j++) {
+                int finalJ = j;
+                if (((List<String>)(internals.get(i).get("variables"))).stream().anyMatch(v -> ((List<String>)(internals.get(finalJ).get("variables"))).contains(v))) {
+                    connections.add(Arrays.asList((String)internals.get(i).get("relation"), (String)internals.get(j).get("relation")));
+                }
+            }
+        }
+
+        bag.put("internals", internals);
+        bag.put("connections", connections);
+        bags.put(bagRelationNames.get(name), bag);
     }
 
     private List<Relation> extractRelations(JoinTree joinTree) {

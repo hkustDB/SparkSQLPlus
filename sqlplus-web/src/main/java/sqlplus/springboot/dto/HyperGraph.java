@@ -37,7 +37,7 @@ public class HyperGraph {
         this.degree = degree;
     }
 
-    public static HyperGraph fromComparisonHyperGraphAndRelations(ComparisonHyperGraph comparisonHyperGraph, List<String> sortedEdges) {
+    public static HyperGraph fromComparisonHyperGraphAndRelations(ComparisonHyperGraph comparisonHyperGraph, List<String> sortedEdges, Map<JoinTreeEdge, String> joinTreeEdgeToStringMap) {
         HyperGraph hyperGraph = new HyperGraph();
         hyperGraph.setDegree(comparisonHyperGraph.getDegree());
         // a node in HyperGraph is an edge in join tree
@@ -52,14 +52,14 @@ public class HyperGraph {
                return joinTreeEdge.getSrc().getRelationId() != joinTreeEdge.getDst().getRelationId();
            }
         }).collect(Collectors.toSet());
-        List<List<String>> edges = (new ArrayList<>(nonSelfComparisons)).stream().map(HyperGraph::convertComparisonToStringList).collect(Collectors.toList());
+        List<List<String>> edges = (new ArrayList<>(nonSelfComparisons)).stream().map(c -> convertComparisonToStringList(c, joinTreeEdgeToStringMap)).collect(Collectors.toList());
         hyperGraph.setEdges(edges);
 
         return hyperGraph;
     }
 
-    private static List<String> convertComparisonToStringList(Comparison comparison) {
+    private static List<String> convertComparisonToStringList(Comparison comparison, Map<JoinTreeEdge, String> joinTreeEdgeToStringMap) {
         Set<JoinTreeEdge> joinTreeEdgeSet = scala.collection.JavaConverters.setAsJavaSet(comparison.getNodes());
-        return (new ArrayList<>(joinTreeEdgeSet)).stream().map(JoinTreeEdge::mkUniformString).collect(Collectors.toList());
+        return (new ArrayList<>(joinTreeEdgeSet)).stream().map(joinTreeEdgeToStringMap::get).collect(Collectors.toList());
     }
 }

@@ -25,13 +25,6 @@ class JoinTreeEdge(val node1: Relation, val node2: Relation) extends Edge[Relati
 
     def connects(n1: Relation, n2: Relation): Boolean =
         (n1.equals(node1) && n2.equals(node2)) || (n1.equals(node2) && n2.equals(node1))
-
-    def mkUniformString: String = {
-        if (node1.getTableDisplayName().compareToIgnoreCase(node2.getTableDisplayName()) < 0)
-            s"${node1.getTableDisplayName()}-${node2.getTableDisplayName()}"
-        else
-            s"${node2.getTableDisplayName()}-${node1.getTableDisplayName()}"
-    }
 }
 
 object JoinTreeEdge {

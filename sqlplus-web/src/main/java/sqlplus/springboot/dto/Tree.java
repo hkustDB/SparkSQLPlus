@@ -1,6 +1,7 @@
 package sqlplus.springboot.dto;
 
 import sqlplus.expression.Variable;
+import sqlplus.graph.BagRelation;
 import sqlplus.graph.JoinTree;
 import sqlplus.graph.JoinTreeEdge;
 import sqlplus.graph.Relation;
@@ -28,7 +29,7 @@ public class Tree {
         this.treeHeight = treeHeight;
     }
 
-    public static Tree fromJoinTree(JoinTree joinTree) {
+    public static Tree fromJoinTree(JoinTree joinTree, Map<String, String> bagRelationNames) {
         Tree tree = new Tree();
         Relation root = joinTree.getRoot();
         Set<JoinTreeEdge> edges = scala.collection.JavaConverters.setAsJavaSet(joinTree.getEdges());
@@ -41,13 +42,22 @@ public class Tree {
                 children.add(e.getSrc());
             }
         });
-        rootMap.put("relation", root.getTableDisplayName());
+
+        if (root instanceof BagRelation) {
+            String bagName = bagRelationNames.get(root.getTableDisplayName());
+            rootMap.put("relation", bagName);
+            rootMap.put("isBag", true);
+        } else {
+            rootMap.put("relation", root.getTableDisplayName());
+            rootMap.put("isBag", false);
+        }
         rootMap.put("variables", new ArrayList<>(scala.collection.JavaConverters.seqAsJavaList(root.getVariableList()).stream().map(Variable::name).collect(Collectors.toList())));
         rootMap.put("children", new ArrayList<HashMap<String, Object>>());
         rootMap.put("leaf", 0);
+
         final int[] maxLevel = {1};
         children.forEach(c -> {
-            int childLevel = visitRelation(c, root, rootMap, edges, 2);
+            int childLevel = visitRelation(c, root, rootMap, edges, bagRelationNames, 2);
             if (childLevel > maxLevel[0])
                 maxLevel[0] = childLevel;
         });
@@ -60,35 +70,43 @@ public class Tree {
         return tree;
     }
 
-    private static int visitRelation(Relation relation, Relation parent, HashMap<String, Object> parentMap, Set<JoinTreeEdge> edges, int level) {
+    private static int visitRelation(Relation relation, Relation parent, HashMap<String, Object> parentMap, Set<JoinTreeEdge> edges,
+                                     Map<String, String> bagRelationNames, int level) {
         HashMap<String, Object> map = new HashMap<>();
         List<Relation> children = new ArrayList<>();
         edges.forEach(e -> {
             if (e.getSrc().equals(relation) && !e.getDst().equals(parent)) {
                 children.add(e.getDst());
-            } else if (e.getDst().equals(relation)  && !e.getSrc().equals(parent)) {
+            } else if (e.getDst().equals(relation) && !e.getSrc().equals(parent)) {
                 children.add(e.getSrc());
             }
         });
 
-        ((ArrayList<HashMap<String, Object>>)(parentMap.get("children"))).add(map);
+        ((ArrayList<HashMap<String, Object>>) (parentMap.get("children"))).add(map);
 
-        map.put("relation", relation.getTableDisplayName());
+        if (relation instanceof BagRelation) {
+            String bagName = bagRelationNames.get(relation.getTableDisplayName());
+            map.put("relation", bagName);
+            map.put("isBag", true);
+        } else {
+            map.put("relation", relation.getTableDisplayName());
+            map.put("isBag", false);
+        }
         map.put("variables", new ArrayList<>(scala.collection.JavaConverters.seqAsJavaList(relation.getVariableList()).stream().map(Variable::name).collect(Collectors.toList())));
         map.put("children", new ArrayList<HashMap<String, Object>>());
         map.put("leaf", 0);
 
         final int[] maxLevel = {level};
         children.forEach(c -> {
-            int childLevel = visitRelation(c, relation, map, edges, level + 1);
+            int childLevel = visitRelation(c, relation, map, edges, bagRelationNames, level + 1);
             if (childLevel > maxLevel[0])
                 maxLevel[0] = childLevel;
         });
-        if (((int)(map.get("leaf"))) < 1) {
+        if (((int) (map.get("leaf"))) < 1) {
             map.put("leaf", 1);
         }
 
-        parentMap.put("leaf", (int)(parentMap.get("leaf")) + (int)(map.get("leaf")));
+        parentMap.put("leaf", (int) (parentMap.get("leaf")) + (int) (map.get("leaf")));
         return maxLevel[0];
     }
 }
