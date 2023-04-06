@@ -1,5 +1,7 @@
 package sqlplus.springboot.component;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -12,6 +14,8 @@ import java.util.*;
 
 @Component
 public class ExperimentHandler {
+    private final static Logger LOGGER = LoggerFactory.getLogger(ExperimentHandler.class);
+
     @Value("${experiment.spark.master.host:localhost}")
     public String masterHost;
 
@@ -83,16 +87,20 @@ public class ExperimentHandler {
         request.addSparkProperty("spark.submit.deployMode", "cluster");
         request.addSparkProperty("spark.driver.supervise", "false");
 
-        SparkSubmissionsCreateResponse response = client.post().uri("/create")
-                .bodyValue(request)
-                .retrieve()
-                .bodyToMono(SparkSubmissionsCreateResponse.class)
-                .block();
-
-        if (response != null && response.success)
-            return Optional.of(response.submissionId);
-        else
+        try {
+            SparkSubmissionsCreateResponse response = client.post().uri("/create")
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(SparkSubmissionsCreateResponse.class)
+                    .block();
+            if (response != null && response.success)
+                return Optional.of(response.submissionId);
+            else
+                return Optional.empty();
+        } catch (Exception e) {
+            LOGGER.error("failed to call create", e);
             return Optional.empty();
+        }
     }
 
     public Optional<String> status(String submissionId) {
@@ -101,20 +109,29 @@ public class ExperimentHandler {
                 .bodyToMono(SparkSubmissionsStatusResponse.class)
                 .block();
 
-        if (response != null && response.success) {
-            return Optional.of(response.driverState);
-        } else {
+        try {
+            if (response != null && response.success) {
+                return Optional.of(response.driverState);
+            } else {
+                return Optional.empty();
+            }
+        } catch (Exception e) {
+            LOGGER.error("failed to call status", e);
             return Optional.empty();
         }
     }
 
     public boolean kill(String submissionId) {
-        SparkSubmissionsKillResponse response = client.post().uri("/kill/{submissionId}", submissionId)
-                .retrieve()
-                .bodyToMono(SparkSubmissionsKillResponse.class)
-                .block();
-
-        return  response != null && response.success;
+        try {
+            SparkSubmissionsKillResponse response = client.post().uri("/kill/{submissionId}", submissionId)
+                    .retrieve()
+                    .bodyToMono(SparkSubmissionsKillResponse.class)
+                    .block();
+            return  response != null && response.success;
+        } catch (Exception e) {
+            LOGGER.error("failed to call kill", e);
+            return false;
+        }
     }
 
     public static class SparkSubmissionsCreateRequest {

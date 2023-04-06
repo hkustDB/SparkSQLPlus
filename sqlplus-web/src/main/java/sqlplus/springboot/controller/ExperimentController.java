@@ -37,10 +37,7 @@ public class ExperimentController {
     public Result start(@RequestBody ExperimentStartRequest request) {
         Result result = new Result();
         result.setCode(200);
-        LOGGER.info(request.toString());
-        manager.clear();
-        request.getExperiments().stream().sorted().forEach(manager::addPendingExperiment);
-        manager.start();
+        manager.start(request.getExperiments().stream().sorted().collect(Collectors.toList()));
 
         return result;
     }
@@ -49,7 +46,6 @@ public class ExperimentController {
     public Result stop() {
         Result result = new Result();
         result.setCode(200);
-        LOGGER.info("stop experiments.");
         manager.stop();
 
         return result;
@@ -73,10 +69,7 @@ public class ExperimentController {
         Result result = new Result();
         result.setCode(200);
         ExperimentStatusResponse response = new ExperimentStatusResponse();
-        response.setExperimentState(manager.getExperimentState().state);
-        response.setExperimentTaskNames(manager.getExperimentNames());
-        response.setExperimentTaskStates(manager.getExperimentTaskStates());
-        response.setExperimentTaskResults(manager.getExperimentTaskResults());
+        manager.fillExperimentStatusResponse(response);
         result.setData(response);
         return result;
     }

@@ -34,7 +34,7 @@ public enum ExperimentTaskState {
     }
 
     public ExperimentTaskState fail() {
-        if (this.equals(RUNNING)) {
+        if (this.equals(RUNNING) || this.equals(PENDING)) {
             return FAILED;
         } else {
             throw new UnsupportedOperationException("fail on state " + this.state);
