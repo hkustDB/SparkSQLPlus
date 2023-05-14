@@ -43,8 +43,20 @@ public class CliFrontend {
         if (commandLine.hasOption(CliFrontendOptions.HELP_OPTION.getOpt())) {
             printHelpMessage();
         } else {
+            if (!commandLine.hasOption(CliFrontendOptions.DDL_OPTION.getOpt())) {
+                System.out.println("Missing required argument: -d,--ddl <path>");
+                printHelpMessage();
+                return;
+            }
             String ddlPath = commandLine.getOptionValue(CliFrontendOptions.DDL_OPTION.getOpt());
+
+            if (!commandLine.hasOption(CliFrontendOptions.OUTPUT_OPTION.getOpt())) {
+                System.out.println("Missing required argument: -o,--output <path>");
+                printHelpMessage();
+                return;
+            }
             String outputPath = commandLine.getOptionValue(CliFrontendOptions.OUTPUT_OPTION.getOpt());
+
             String packageName = commandLine.hasOption(CliFrontendOptions.PACKAGE_NAME_OPTION.getOpt()) ?
                     commandLine.getOptionValue(CliFrontendOptions.PACKAGE_NAME_OPTION.getOpt()) :
                     "sqlplus.example";
@@ -73,7 +85,7 @@ public class CliFrontend {
 
             SqlPlusCompiler sqlPlusCompiler = new SqlPlusCompiler(variableManager);
             CompileResult compileResult = sqlPlusCompiler.compile(catalogManager, convertResult);
-            CodeGenerator codeGenerator = new SparkSQLPlusExampleCodeGenerator(compileResult);
+            CodeGenerator codeGenerator = new SparkSQLPlusExampleCodeGenerator(compileResult, packageName, objectName);
             StringBuilder builder = new StringBuilder();
             codeGenerator.generate(builder);
 

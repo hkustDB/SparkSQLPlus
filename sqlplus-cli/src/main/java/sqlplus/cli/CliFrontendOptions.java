@@ -41,9 +41,9 @@ public class CliFrontendOptions {
 
     static {
         HELP_OPTION.setRequired(false);
-        DDL_OPTION.setRequired(true);
+        DDL_OPTION.setRequired(false);
         DDL_OPTION.setArgName("path");
-        OUTPUT_OPTION.setRequired(true);
+        OUTPUT_OPTION.setRequired(false);
         OUTPUT_OPTION.setArgName("path");
         PACKAGE_NAME_OPTION.setRequired(false);
         PACKAGE_NAME_OPTION.setArgName("package name");

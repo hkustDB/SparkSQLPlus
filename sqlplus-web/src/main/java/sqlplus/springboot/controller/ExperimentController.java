@@ -55,7 +55,8 @@ public class ExperimentController {
     public Result queries() {
         Result result = new Result();
         result.setCode(200);
-        String[] builtinQueries = new String[]{"Query1", "Query2", "Query3", "Query4", "Query5", "Query6", "Query7", "Query8"};
+        String[] builtinQueries = new String[]{"Query1", "Query2", "Query3", "Query4",
+                "Query5", "Query6", "Query7", "Query8", "Query9"};
         List<String> customQueries = CustomQueryManager.list("examples/query/custom/");
 
         List<String> allQueries = Arrays.stream(builtinQueries).collect(Collectors.toList());

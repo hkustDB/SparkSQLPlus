@@ -217,7 +217,8 @@ public class CompileController {
 
         SqlPlusCompiler sqlPlusCompiler = new SqlPlusCompiler(variableManager);
         compileResult = sqlPlusCompiler.compile(catalogManager, convertResult);
-        CodeGenerator codeGenerator = new SparkSQLPlusExampleCodeGenerator(compileResult);
+        CodeGenerator codeGenerator = new SparkSQLPlusExampleCodeGenerator(compileResult,
+                "sqlplus.example", "SparkSQLPlusExample");
         StringBuilder builder = new StringBuilder();
         codeGenerator.generate(builder);
 
