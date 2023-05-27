@@ -1,5 +1,6 @@
 package sqlplus.springboot.component;
 
+import sqlplus.springboot.SqlplusConfig;
 import sqlplus.springboot.dto.ExperimentStatusResponse;
 import sqlplus.springboot.util.ExperimentJarBuilder;
 import sqlplus.springboot.util.ExperimentState;
@@ -42,9 +43,13 @@ public class ExperimentManager {
 
     private final BlockingQueue<String> pendingExperiments = new LinkedBlockingQueue<>();
 
-    private final ExperimentHandler handler;
+    private final SqlplusConfig sqlplusConfig;
 
-    private final ExperimentResultRetriever retriever;
+    private final SparkRestHandler sparkRestHandler;
+
+    private final WebHdfsHandler webHdfsHandler;
+
+    private final AbstractExperimentResultRetriever retriever;
 
     private Lock readLock;
     private Lock writeLock;
@@ -57,8 +62,11 @@ public class ExperimentManager {
     }
 
     @Autowired
-    public ExperimentManager(ExperimentHandler handler, ExperimentResultRetriever retriever) {
-        this.handler = handler;
+    public ExperimentManager(SqlplusConfig sqlplusConfig, SparkRestHandler sparkRestHandler, WebHdfsHandler webHdfsHandler,
+                             AbstractExperimentResultRetriever retriever) {
+        this.sqlplusConfig = sqlplusConfig;
+        this.sparkRestHandler = sparkRestHandler;
+        this.webHdfsHandler = webHdfsHandler;
         this.retriever = retriever;
     }
 
@@ -70,11 +78,12 @@ public class ExperimentManager {
                 if (runningExperimentName.isPresent()) {
                     // we have submitted an application
                     // check whether it has already finished
-                    Optional<String> optDriverState = handler.status(runningExperimentSubmissionId);
+                    Optional<String> optDriverState = sparkRestHandler.status(runningExperimentSubmissionId);
                     if (optDriverState.isPresent()) {
                         if (optDriverState.get().equalsIgnoreCase("FINISHED")) {
                             // the application has finished, retrieve the result
-                            Optional<Double> time = retriever.retrieve(runningExperimentName.get(), runningExperimentSubmitTimestamp);
+                            Optional<Double> time = retriever.retrieve(runningExperimentSubmissionId,
+                                    runningExperimentName.get(), runningExperimentSubmitTimestamp);
                             if (time.isPresent()) {
                                 LOGGER.info(runningExperimentName.get() + " running time: " + time);
                                 experimentTaskSuccess(runningExperimentName.get(), time.get());
@@ -97,7 +106,7 @@ public class ExperimentManager {
                             // check whether it has exceeded the time limit
                             if (duration >= timeout * 1000L) {
                                 LOGGER.info(runningExperimentName.get() + " has run for more than " + timeout + " s.");
-                                boolean killed = handler.kill(runningExperimentSubmissionId);
+                                boolean killed = sparkRestHandler.kill(runningExperimentSubmissionId);
                                 if (killed) {
                                     experimentTaskTimeout(runningExperimentName.get());
                                     cleanRunningExperimentInfo();
@@ -131,7 +140,7 @@ public class ExperimentManager {
                     } else {
                         classname = "sqlplus.example." + head.replaceAll("-", "");
                     }
-                    Optional<String> optSubmissionId = handler.create(
+                    Optional<String> optSubmissionId = sparkRestHandler.create(
                             // experiment name: Query1-SparkSQLPlus, class name: cqc.example.Query1SparkSQLPlus
                             // experiment name: CustomQuery1-SparkSQLPlus, class name: cqc.example.custom.q1.CustomQuery1SparkSQLPlus
                             classname,
@@ -153,11 +162,12 @@ public class ExperimentManager {
                 if (runningExperimentName.isPresent()) {
                     // we have submitted an application
                     // check whether it has already finished
-                    Optional<String> optDriverState = handler.status(runningExperimentSubmissionId);
+                    Optional<String> optDriverState = sparkRestHandler.status(runningExperimentSubmissionId);
                     if (optDriverState.isPresent()) {
                         if (optDriverState.get().equalsIgnoreCase("FINISHED")) {
                             // the application has finished, retrieve the result
-                            Optional<Double> time = retriever.retrieve(runningExperimentName.get(), runningExperimentSubmitTimestamp);
+                            Optional<Double> time = retriever.retrieve(runningExperimentSubmissionId,
+                                    runningExperimentName.get(), runningExperimentSubmitTimestamp);
                             if (time.isPresent()) {
                                 LOGGER.info(runningExperimentName.get() + " running time: " + time);
                                 experimentTaskSuccess(runningExperimentName.get(), time.get());
@@ -176,7 +186,7 @@ public class ExperimentManager {
                             pendingExperiments.clear();
                             experimentState = this.experimentState.terminate();
                         } else if (optDriverState.get().equalsIgnoreCase("RUNNING")) {
-                            boolean killed = handler.kill(runningExperimentSubmissionId);
+                            boolean killed = sparkRestHandler.kill(runningExperimentSubmissionId);
                             if (killed) {
                                 experimentTaskFail(runningExperimentName.get());
                                 cleanRunningExperimentInfo();
@@ -281,6 +291,12 @@ public class ExperimentManager {
         }
 
         boolean isBuildSuccess = ExperimentJarBuilder.build();
+
+        if (!sqlplusConfig.isLocalMode()) {
+            // remote mode, upload the jars before execution
+            webHdfsHandler.uploadJars();
+        }
+
         writeLock.lock();
         try {
             if (!isBuildSuccess) {

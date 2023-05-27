@@ -15,10 +15,4 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .allowedMethods("*")
                 .allowedOriginPatterns("*");
     }
-
-//    @Override
-//    public void addResourceHandlers(ResourceHandlerRegistry registry) {
-//        registry.addResourceHandler("/**")
-//                .addResourceLocations("file:/Users/bdaiab/Work/vue/testdeploy/dist/");
-//    }
 }

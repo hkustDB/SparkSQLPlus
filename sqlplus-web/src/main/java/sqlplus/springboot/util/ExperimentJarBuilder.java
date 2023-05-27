@@ -2,7 +2,6 @@ package sqlplus.springboot.util;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import sqlplus.springboot.component.ExperimentResultRetriever;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;

@@ -4,13 +4,20 @@ server:
 logging:
   config: classpath:log4j2-spring.xml
 
+sqlplus:
+  home: /Users/sqlplus/Projects/SparkSQLPlus
+
 experiment:
+  mode: local
+  forwarding: true
   spark:
     master:
       host: localhost
       port: 7077
       submission:
         port: 6066
+      web-ui:
+        port: 8080
     driver:
       memory: 4g
       cores: 1
@@ -20,8 +27,12 @@ experiment:
     default:
       parallelism: 1
   timeout: 300
-  example-jar: sqlplus-example/target/sparksql-plus-example.jar
-  lib-jar: sqlplus-lib/target/sparksql-plus-lib.jar
-  data: examples/data
+  hdfs:
+    host: localhost
+    post: 50070
+    path: hdfs:///Users/sqlplus
+    user: sqlplus
+  data:
+    path: hdfs:///Users/sqlplus/data
   result:
-    path: /tmp/sparksql-plus.log
+    type: web-ui
