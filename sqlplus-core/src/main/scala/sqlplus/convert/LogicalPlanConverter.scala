@@ -4,10 +4,11 @@ import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.logical.{LogicalAggregate, LogicalFilter, LogicalJoin, LogicalProject, LogicalTableScan}
 import org.apache.calcite.rex.{RexCall, RexInputRef, RexLiteral, RexNode}
 import org.apache.calcite.util.NlsString
-import sqlplus.expression.{DoubleLiteralExpression, DoublePlusDoubleExpression, DoubleTimesDoubleExpression, Expression, IntLiteralExpression, IntPlusIntExpression, IntTimesIntExpression, IntervalLiteralExpression, LongPlusLongExpression, LongTimesLongExpression, SingleVariableExpression, StringLiteralExpression, TimestampPlusIntervalExpression, Variable, VariableDisjointSet, VariableManager}
+import sqlplus.expression.{DoubleLiteralExpression, DoublePlusDoubleExpression, DoubleTimesDoubleExpression, Expression, IntLiteralExpression, IntPlusIntExpression, IntTimesIntExpression, IntervalLiteralExpression, LongPlusLongExpression, LongTimesLongExpression, SingleVariableExpression, StringLiteralExpression, TimestampPlusIntervalExpression, Variable, VariableManager}
 import sqlplus.graph.{AggregatedRelation, Comparison, ComparisonHyperGraph, JoinTree, JoinTreeEdge, Relation, RelationalHyperGraph, TableScanRelation}
 import sqlplus.gyo.GyoAlgorithm
 import sqlplus.types.{DataType, DoubleDataType, IntDataType, IntervalDataType, LongDataType, TimestampDataType}
+import sqlplus.utils.DisjointSet
 
 import scala.collection.JavaConversions._
 import scala.collection.immutable.List
@@ -80,7 +81,7 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
         assert(operands.stream.allMatch((operand: RexNode) => operand.isInstanceOf[RexCall]))
 
         val variableTableBuffer = new ArrayBuffer[Variable]()
-        val disjointSet = new VariableDisjointSet()
+        val disjointSet = new DisjointSet[Variable]()
         for (field <- logicalFilter.getInput.getRowType.getFieldList) {
             val fieldType = DataType.fromSqlType(field.getType.getSqlTypeName)
             val newVariable = variableManager.getNewVariable(fieldType)
