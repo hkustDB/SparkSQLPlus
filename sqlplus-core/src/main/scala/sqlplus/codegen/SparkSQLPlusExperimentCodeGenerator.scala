@@ -5,7 +5,6 @@ import sqlplus.plan.table.SqlPlusTable
 
 class SparkSQLPlusExperimentCodeGenerator(compileResult: CompileResult, classname: String, queryName: String, shortQueryName: String)
     extends AbstractSparkSQLPlusCodeGenerator(compileResult.comparisonOperators, compileResult.sourceTables,
-        compileResult.aggregatedRelations, compileResult.auxiliaryRelations, compileResult.bagRelations,
         compileResult.relationIdToInfo, compileResult.reduceActions, compileResult.enumerateActions, CountResultAction) {
 
     override def getAppName: String = classname

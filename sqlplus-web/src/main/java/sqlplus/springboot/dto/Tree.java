@@ -1,10 +1,7 @@
 package sqlplus.springboot.dto;
 
 import sqlplus.expression.Variable;
-import sqlplus.graph.BagRelation;
-import sqlplus.graph.JoinTree;
-import sqlplus.graph.JoinTreeEdge;
-import sqlplus.graph.Relation;
+import sqlplus.graph.*;
 
 import java.util.*;
 import java.util.stream.Collectors;

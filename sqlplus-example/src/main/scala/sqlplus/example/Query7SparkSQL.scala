@@ -1,8 +1,7 @@
 package sqlplus.example
 
-import org.apache.spark.sql.types.{IntegerType, StructField, StructType}
-import org.apache.spark.sql.{Row, SparkSession}
-import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.SparkConf
 import org.slf4j.LoggerFactory
 
 object Query7SparkSQL {
@@ -11,53 +10,32 @@ object Query7SparkSQL {
 	def main(args: Array[String]): Unit = {
 		val conf = new SparkConf()
 		conf.setAppName("Query7SparkSQL")
-		val sc = new SparkContext(conf)
+		val spark = SparkSession.builder.config(conf).getOrCreate()
 
-		val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
+		val schema0 = "src INTEGER, dst INTEGER"
+		val df0 = spark.read.format("csv")
+			.option("delimiter", ",")
+			.option("quote", "")
+			.option("header", "false")
+			.schema(schema0)
+			.load(s"${args.head}/graph.dat").persist()
+		df0.count()
+		df0.createOrReplaceTempView("Graph")
 
-		val lines = sc.textFile(s"${args.head}/graph.dat")
-		val graph = lines.map(line => {
-			val temp = line.split(",")
-			(temp(0).toInt, temp(1).toInt)
-		})
-		graph.cache()
-		graph.count()
-		val frequency = graph.map(edge => (edge._1, 1)).reduceByKey((a, b) => a + b).cache()
-		frequency.count()
-
-
-		val graphSchemaString = "src dst"
-		val graphFields = graphSchemaString.split(" ")
-			.map(fieldName => StructField(fieldName, IntegerType, nullable = false))
-		val graphSchema = StructType(graphFields)
-
-		val countSchemaString = "src cnt"
-		val countFields = countSchemaString.split(" ")
-			.map(fieldName => StructField(fieldName, IntegerType, nullable = false))
-		val countSchema = StructType(countFields)
-
-		val graphRow = graph.map(attributes => Row(attributes._1, attributes._2))
-		val countRow = frequency.map(attributes => Row(attributes._1, attributes._2))
-
-		val graphDF = spark.createDataFrame(graphRow, graphSchema)
-		val countDF = spark.createDataFrame(countRow, countSchema)
-
-		graphDF.createOrReplaceTempView("Graph")
-		countDF.createOrReplaceTempView("countDF")
-
-		graphDF.persist()
-		countDF.persist()
-		graphDF.count()
-
-
-		val resultDF = spark.sql(
-			"SELECT g1.src, g1.dst, g2.dst, g3.dst, c1.cnt, c2.cnt From Graph g1, Graph g2, Graph g3, countDF c1, countDF c2 " +
-				"where g1.dst = g2.src and g2.dst = g3.src and c1.src = g1.src and c2.src = g3.dst and c1.cnt < g1.dst AND c2.cnt < g3.src")
+		val result = spark.sql(
+			"SELECT g1.src AS src, g1.dst AS via1, g3.src AS via2, g3.dst AS dst, " +
+				"c1.cnt AS cnt1, c2.cnt AS cnt2 " +
+				"FROM Graph AS g1, Graph AS g2, Graph AS g3, " +
+				"(SELECT src, COUNT(*) AS cnt FROM Graph GROUP BY src) AS c1, " +
+				"(SELECT src, COUNT(*) AS cnt FROM Graph GROUP BY src) AS c2 " +
+				"WHERE c1.src = g1.src AND g1.dst = g2.src AND g2.dst = g3.src AND g3.dst = c2.src " +
+				"AND c1.cnt < g1.dst AND c2.cnt < g3.src"
+		)
 
 		val ts1 = System.currentTimeMillis()
-		val resultCnt = resultDF.count()
+		val cnt = result.count()
 		val ts2 = System.currentTimeMillis()
-		LOGGER.info("Query7-SparkSQL cnt: " + resultCnt)
+		LOGGER.info("Query7-SparkSQL cnt: " + cnt)
 		LOGGER.info("Query7-SparkSQL time: " + (ts2 - ts1) / 1000f)
 
 		spark.close()

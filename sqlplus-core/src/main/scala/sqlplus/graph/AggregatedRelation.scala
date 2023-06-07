@@ -2,6 +2,7 @@ package sqlplus.graph
 
 import sqlplus.expression.Variable
 
+// TODO: support aggregation over not only table scan relations
 class AggregatedRelation(val tableName: String, val variables: List[Variable],
                          val group: List[Int], val func: String, val tableDisplayName: String) extends Relation {
 

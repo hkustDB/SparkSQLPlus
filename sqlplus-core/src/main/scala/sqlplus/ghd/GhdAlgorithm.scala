@@ -1,8 +1,7 @@
 package sqlplus.ghd
 
-import sqlplus.expression.{Variable, VariableManager}
-import sqlplus.graph.{BagRelation, Relation, RelationalHyperGraph, TableScanRelation}
-import sqlplus.types.IntDataType
+import sqlplus.expression.Variable
+import sqlplus.graph.{AuxiliaryRelation, BagRelation, JoinTree, JoinTreeEdge, Relation, RelationalHyperGraph}
 
 /**
  * Use brute-force to compute a generalized hypertree decomposition for a given hypergraph.
@@ -10,28 +9,73 @@ import sqlplus.types.IntDataType
  * (https://github.com/HazyResearch/EmptyHeaded/blob/master/query_compiler/src/main/scala/solver/GHDSolver.scala).
  */
 class GhdAlgorithm {
-    def run(hyperGraph: RelationalHyperGraph): RelationalHyperGraph = {
-        val roots = decompose(hyperGraph.edges, Set.empty).flatMap(root => root.transform())
-        // clear memoized values in GhdScoreAssigner before computing scores
-        GhdScoreAssigner.clear()
-        val pickedRoot = roots.toList.minBy(n => n.score)
-        convertGhdNodeToHyperGraph(pickedRoot)
-    }
-
-    private def convertGhdNodeToHyperGraph(root: GhdNode): RelationalHyperGraph = {
-        var hyperGraph = RelationalHyperGraph.EMPTY
-
-        def visit(node: GhdNode): Unit = {
-            if (node.relations.size == 1) {
-                hyperGraph = hyperGraph.addHyperEdge(node.relations.head)
-            } else {
-                hyperGraph = hyperGraph.addHyperEdge(BagRelation.createFrom(node.relations))
-            }
-            node.childrenNode.foreach(visit)
+    private def convertGhdNode(root: GhdNode): (Set[JoinTreeEdge], Set[Relation], Relation) = {
+        def toRelation(node: GhdNode): Relation = {
+            if (node.relations.size == 1)
+                node.relations.head
+            else
+                BagRelation.createFrom(node.relations)
         }
 
-        visit(root)
-        hyperGraph
+        def visit(node: GhdNode, parent: Option[Relation]): (Set[JoinTreeEdge], Set[Relation], Relation) = {
+            val relation = toRelation(node)
+
+            val result = node.childrenNode.foldLeft((Set.empty[JoinTreeEdge], Set.empty[Relation]))((z, child) => {
+                val childResult = visit(child, Some(relation))
+                (z._1 ++ childResult._1, z._2 ++ childResult._2)
+            })
+
+            if (parent.nonEmpty) {
+                (result._1 + new JoinTreeEdge(parent.get, relation), result._2 + relation, null)
+            } else {
+                // visiting the root node
+                (result._1, result._2 + relation, relation)
+            }
+        }
+
+        visit(root, None)
+    }
+
+    private def convertGhdNodeAndRemoveRedundancy(root: GhdNode,
+                                                  auxiliaryRelationToConvertedComponent: Map[Relation, (Set[JoinTreeEdge], Set[Relation], Relation)]): (Set[JoinTreeEdge], Set[Relation], Relation) = {
+        val auxiliaryRelations = auxiliaryRelationToConvertedComponent.keySet
+
+        def visitChildren(childrenNode: Set[GhdNode], parent: Relation): (Set[JoinTreeEdge], Set[Relation]) = {
+            childrenNode.foldLeft((Set.empty[JoinTreeEdge], Set.empty[Relation]))((z, child) => {
+                val childResult = visit(child, Some(parent))
+                (z._1 ++ childResult._1, z._2 ++ childResult._2)
+            })
+        }
+
+        def visit(node: GhdNode, parent: Option[Relation]): (Set[JoinTreeEdge], Set[Relation], Relation) = {
+            val (relation, childrenResult, additionalRelations, additionalEdges) = if (node.relations.intersect(auxiliaryRelations).nonEmpty) {
+                val auxiliaries = node.relations.intersect(auxiliaryRelations)
+                val nonAuxiliaries = node.relations.diff(auxiliaries)
+                // if the variables in a auxiliary relation is fully covered by other non-auxiliary relations,
+                // we can remove the auxiliary relation and append the supporting relation to this relation
+                val removeAuxiliaries = auxiliaries.filter(r => r.getVariableList().toSet.subsetOf(nonAuxiliaries.flatMap(na => na.getVariableList())))
+                val keepAuxiliaries = auxiliaries.diff(removeAuxiliaries)
+
+                val remains = nonAuxiliaries ++ keepAuxiliaries
+                val relation = if (remains.size == 1) remains.head else BagRelation.createFrom(remains)
+                val childrenResult = visitChildren(node.childrenNode, relation)
+                (relation, childrenResult, keepAuxiliaries,
+                    removeAuxiliaries.map(r => new JoinTreeEdge(relation, auxiliaryRelationToConvertedComponent(r)._3))
+                        ++ keepAuxiliaries.map(r => new JoinTreeEdge(r, r.asInstanceOf[AuxiliaryRelation].supportingRelation)))
+            } else {
+                val relation = if (node.relations.size == 1) node.relations.head else BagRelation.createFrom(node.relations)
+                val childrenResult = visitChildren(node.childrenNode, relation)
+                (relation, childrenResult, Set.empty, Set.empty)
+            }
+
+            if (parent.nonEmpty) {
+                ((childrenResult._1 + new JoinTreeEdge(parent.get, relation)) ++ additionalEdges, (childrenResult._2 + relation) ++ additionalRelations, null)
+            } else {
+                (childrenResult._1 ++ additionalEdges, (childrenResult._2 + relation) ++ additionalRelations, relation)
+            }
+        }
+
+        visit(root, None)
     }
 
     private def decompose(edges: Set[Relation], parentVariables: Set[Variable]): Set[Bag] = {
@@ -93,5 +137,79 @@ class GhdAlgorithm {
         }
 
         loop(remain, Set.empty)
+    }
+
+    def run(hyperGraph: RelationalHyperGraph, outputVariables: Set[Variable]): GhdResult = {
+        val hyperEdges = hyperGraph.getEdges()
+
+        // for outputVariables, the reachable is empty set
+        // for nonOutputVariables, the reachable is the set of all relations that contains this variable
+        val reachable: Map[Variable, Set[Relation]] = hyperEdges.flatMap(r => r.getVariableList()
+            .map(v => (v, r))).groupBy(t => t._1)
+            .map(kv => if (outputVariables.contains(kv._1)) (kv._1, Set.empty[Relation]) else (kv._1, kv._2.map(t => t._2)))
+
+        // the relations that variables are all output variables
+        val outputRelations = hyperEdges.filter(r => r.getVariableList().forall(v => outputVariables.contains(v)))
+        val remainRelations = hyperEdges.diff(outputRelations)
+
+        val components = findComponents(remainRelations, reachable)
+        val componentAndOutputVariables = components.map(c => (c, c.flatMap(r => r.getVariableList()).intersect(outputVariables)))
+        val componentDecompositionAndOutputVariables = componentAndOutputVariables.map(t => (decompose(t._1, t._2), t._2))
+        val auxiliaryRelationToConvertedComponent: Map[Relation, (Set[JoinTreeEdge], Set[Relation], Relation)] =
+            componentDecompositionAndOutputVariables.map(t => {
+            val decompositions = t._1
+            val componentOutputVariables = t._2
+            val roots = decompositions.flatMap(b => b.transform())
+            GhdScoreAssigner.clear()
+            val pickedRoot = roots.toList.minBy(n => n.score)
+            val convertResult = convertGhdNode(pickedRoot)
+            // the root relation of the component should have all output variables
+            assert(componentOutputVariables.subsetOf(convertResult._3.getVariableList().toSet))
+            // create an auxiliary relation from the root relation
+            val auxiliary = convertResult._3.project(componentOutputVariables)
+            // here we do not add the JoinTreeEdge between the root relation and the auxiliary relation
+            // because the auxiliary relation may be absorbed later
+            (auxiliary, convertResult)
+        }).toMap
+
+        val outputAndAuxiliaryRelations = outputRelations ++ auxiliaryRelationToConvertedComponent.keySet
+        val roots = decompose(outputAndAuxiliaryRelations, Set.empty).flatMap(b => b.transform())
+        GhdScoreAssigner.clear()
+        val minScore = roots.toList.map(n => n.score).min
+        val pickedRoots = roots.toList.filter(n => Math.abs(n.score._1 - minScore._1) < 0.01 && n.score._2 == minScore._2)
+        val convertResults = pickedRoots.map(pickedRoot => convertGhdNodeAndRemoveRedundancy(pickedRoot, auxiliaryRelationToConvertedComponent))
+
+        val result = convertResults.map(convertResult => {
+            val combined = auxiliaryRelationToConvertedComponent.values.foldLeft((convertResult._1, convertResult._2))((z, t) => {
+                (z._1 ++ t._1, z._2 ++ t._2)
+            })
+            val joinTree = new JoinTree(convertResult._3, combined._1, convertResult._2)
+            val hypergraph = combined._2.foldLeft(RelationalHyperGraph.EMPTY)((z, e) => z.addHyperEdge(e))
+            (joinTree, hypergraph)
+        })
+
+        GhdResult(result)
+    }
+
+    def findComponents(relations: Set[Relation], reachable: Map[Variable, Set[Relation]], result: List[Set[Relation]] = List.empty): List[Set[Relation]] = {
+        def search(current: Set[Relation], component: Set[Relation]): Set[Relation] = {
+            if (current.isEmpty)
+                component
+            else {
+                // for each variable in each relation in current,
+                // add all reachable relations to next if not visited
+                val visited = component.union(current)
+                val next = current.flatMap(r => r.getVariableList()).flatMap(reachable).diff(visited)
+                search(next, visited)
+            }
+        }
+
+        if (relations.isEmpty)
+            result
+        else {
+            val picked = relations.head
+            val component = search(Set(picked), Set.empty)
+            findComponents(relations.diff(component), reachable, component :: result)
+        }
     }
 }

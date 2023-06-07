@@ -5,6 +5,7 @@ import org.apache.calcite.rel.logical.{LogicalAggregate, LogicalFilter, LogicalJ
 import org.apache.calcite.rex.{RexCall, RexInputRef, RexLiteral, RexNode}
 import org.apache.calcite.util.NlsString
 import sqlplus.expression.{DoubleLiteralExpression, DoublePlusDoubleExpression, DoubleTimesDoubleExpression, Expression, IntLiteralExpression, IntPlusIntExpression, IntTimesIntExpression, IntervalLiteralExpression, LongPlusLongExpression, LongTimesLongExpression, SingleVariableExpression, StringLiteralExpression, TimestampPlusIntervalExpression, Variable, VariableManager}
+import sqlplus.ghd.GhdAlgorithm
 import sqlplus.graph.{AggregatedRelation, Comparison, ComparisonHyperGraph, JoinTree, JoinTreeEdge, Relation, RelationalHyperGraph, TableScanRelation}
 import sqlplus.gyo.GyoAlgorithm
 import sqlplus.types.{DataType, DoubleDataType, IntDataType, IntervalDataType, LongDataType, TimestampDataType}
@@ -21,21 +22,31 @@ import scala.collection.mutable.{ArrayBuffer, ListBuffer}
  *
  */
 class LogicalPlanConverter(val variableManager: VariableManager) {
-    val algorithm: GyoAlgorithm = new GyoAlgorithm
+    val gyo: GyoAlgorithm = new GyoAlgorithm
+    val ghd: GhdAlgorithm = new GhdAlgorithm
     var suffix: Int = 0
 
-    def runGyo(root: RelNode): (List[(JoinTree, ComparisonHyperGraph)], List[Variable], String) = {
+    def run(root: RelNode): (List[(JoinTree, ComparisonHyperGraph)], List[Variable], String) = {
         val (relations, comparisons, outputVariables, isFull) = traverseLogicalPlan(root)
         val relationalHyperGraph = relations.foldLeft(RelationalHyperGraph.EMPTY)((g, r) => g.addHyperEdge(r))
 
-        val gyoResult = algorithm.run(relationalHyperGraph, outputVariables.toSet)
+        val optGyoResult = gyo.run(relationalHyperGraph, outputVariables.toSet)
+        val joinTreeWithHyperGraphs = if (optGyoResult.nonEmpty) {
+            optGyoResult.get.joinTreeWithHyperGraphs
+        } else {
+            val result = ghd.run(relationalHyperGraph, outputVariables.toSet)
+            result.joinTreeWithHyperGraphs
+        }
+
         // construct a ComparisonHyperGraph for each join tree, the ComparisonHyperGraph has the minimum degree
-        val joinTreesWithComparisonHyperGraph: List[(JoinTree, ComparisonHyperGraph)] = gyoResult.joinTrees.flatMap(joinTree => {
+        val joinTreesWithComparisonHyperGraph: List[(JoinTree, ComparisonHyperGraph)] = joinTreeWithHyperGraphs.flatMap(t => {
+            val joinTree = t._1
+            val hyperGraph = t._2
             val comparisonHyperEdges: List[Comparison] = comparisons.map(comparison => {
                 val op = comparison._1
                 val left = comparison._2
                 val right = comparison._3
-                val path = getShortestInRelationalHyperGraph(gyoResult.hyperGraph.getEdges(), joinTree, left, right).toSet
+                val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, left, right).toSet
                 Comparison(path, op, left, right)
             })
 
@@ -59,12 +70,12 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
     }
 
     def convert(root: RelNode): ConvertResult = {
-        val (joinTreesWithComparisonHyperGraph, outputVariables, _) = runGyo(root)
+        val (joinTreesWithComparisonHyperGraph, outputVariables, _) = run(root)
 
         // select the joinTree and ComparisonHyperGraph with minimum degree
         val selected = joinTreesWithComparisonHyperGraph.minBy(t => t._2.getDegree())
 
-        ConvertResult(selected._1.getEdges().flatMap(e => Set(e.getSrc, e.getDst)).toList, outputVariables, selected._1, selected._2)
+        ConvertResult(outputVariables, selected._1, selected._2)
     }
 
     def traverseLogicalPlan(root: RelNode): (List[Relation], List[(String, Expression, Expression)], List[Variable], String) = {
@@ -214,7 +225,7 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
         val intersect = fromNodes.intersect(toNodes)
         if (intersect.nonEmpty) {
             val srcAndDst = intersect.head
-            return List(JoinTreeEdge(srcAndDst, srcAndDst))
+            return List(new JoinTreeEdge(srcAndDst, srcAndDst))
         }
 
         // store the predecessor that on the path from source to the node.

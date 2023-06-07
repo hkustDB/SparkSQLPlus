@@ -17,6 +17,9 @@ abstract class Relation extends HyperEdge[Variable] {
     def removeVariables(variables: Set[Variable]): Relation =
         AuxiliaryRelation.createFrom(this, getVariableList().filterNot(v => variables.contains(v)))
 
+    def project(variables: Set[Variable]): Relation =
+        AuxiliaryRelation.createFrom(this, getVariableList().filter(v => variables.contains(v)))
+
     override def hashCode(): Int = getRelationId().##
 
     override def equals(obj: Any): Boolean = obj match {

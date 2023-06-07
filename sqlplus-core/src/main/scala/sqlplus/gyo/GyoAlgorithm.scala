@@ -15,7 +15,7 @@ class GyoAlgorithm {
      * @param outputVariables
      * @return
      */
-    def run(hyperGraph: RelationalHyperGraph, outputVariables: Set[Variable]): GyoResult = {
+    def run(hyperGraph: RelationalHyperGraph, outputVariables: Set[Variable]): Option[GyoResult] = {
         val initState = new GyoState(hyperGraph, Forest.create(hyperGraph))
 
         def attach(parent: Relation, child: Relation, graph: RelationalHyperGraph, forest: Forest): GyoState = {
@@ -154,9 +154,9 @@ class GyoAlgorithm {
             }
         }
 
-        assert(stableState.nonEmpty)
-        // assert that the variables in stable states are all output variables
-        assert(stableState.forall(s => s.getRelationalHyperGraph.getEdges().forall(r => r.getNodes().forall(v => outputVariables.contains(v)))))
+        if (stableState.isEmpty || stableState.forall(s => s.getRelationalHyperGraph.getEdges().exists(r => r.getNodes().exists(v => !outputVariables.contains(v))))) {
+            return None
+        }
 
         // step 2
         val finalStates = mutable.HashSet.empty[(GyoState, Set[Relation])]
@@ -181,38 +181,32 @@ class GyoAlgorithm {
 
         if (finalStates.map(t => t._1).forall(fs => fs.getRelationalHyperGraph.getEdges().size == 1)) {
             val rootsAndSubset = finalStates.map(s => (s._1.getForest.getTree(s._1.getRelationalHyperGraph.getEdges().head), s._2)).toList
-            gyo.GyoResult(rootsAndSubset.map(ras => convertToJoinTree(ras._1, ras._2)), hyperGraph)
+            Some(GyoResult(rootsAndSubset.map(ras => convertToJoinTreeWithHyperGraph(ras._1, ras._2))))
         } else {
-            // the input query is not free connex, try to decompose and rerun
-            val decomposed = decompose(hyperGraph)
-            if (decomposed.getSignature() == hyperGraph.getSignature()) {
-                // the input query is not free connex but we are unable to decompose it
-                throw new UnsupportedOperationException("unsupported class of query")
-            } else {
-                // try again
-                run(decomposed, outputVariables)
-            }
+            None
         }
     }
 
-    private def convertToJoinTree(root: TreeNode, subset: Set[Relation]): JoinTree = {
-        def fun(node: TreeNode, parent: Relation): Set[JoinTreeEdge] = {
+    private def convertToJoinTreeWithHyperGraph(root: TreeNode, subset: Set[Relation]): (JoinTree, RelationalHyperGraph) = {
+        def fun(node: TreeNode, parent: Relation): (Set[JoinTreeEdge], Set[Relation]) = {
             node match {
                 case InternalTreeNode(relation, children) =>
-                    children.flatMap(n => fun(n, relation)) + graph.JoinTreeEdge(relation, parent)
+                    val childrenResult = children.map(n => fun(n, relation))
+                        .foldLeft((Set.empty[JoinTreeEdge], Set.empty[Relation]))((z, r) => (z._1 ++ r._1, z._2 ++ r._2))
+                    (childrenResult._1 + new JoinTreeEdge(parent, relation), childrenResult._2 + relation)
                 case LeafTreeNode(relation) =>
-                    Set(graph.JoinTreeEdge(relation, parent))
+                    (Set(new JoinTreeEdge(parent, relation)), Set(relation))
             }
         }
 
         root match {
-            case LeafTreeNode(relation) => graph.JoinTree(relation, Set(), subset)
-            case InternalTreeNode(relation, children) => graph.JoinTree(relation, children.flatMap(n => fun(n, relation)), subset)
+            case LeafTreeNode(relation) =>
+                (JoinTree(relation, Set(), subset), RelationalHyperGraph.EMPTY.addHyperEdge(relation))
+            case InternalTreeNode(relation, children) =>
+                val childrenResult = children.map(n => fun(n, relation))
+                    .foldLeft((Set.empty[JoinTreeEdge], Set.empty[Relation]))((z, r) => (z._1 ++ r._1, z._2 ++ r._2))
+                val graph = childrenResult._2.foldLeft(RelationalHyperGraph.EMPTY)((g, r) => g.addHyperEdge(r)).addHyperEdge(relation)
+                (JoinTree(relation, childrenResult._1, subset), graph)
         }
-    }
-
-    private def decompose(hyperGraph: RelationalHyperGraph): RelationalHyperGraph = {
-        val algorithm = new GhdAlgorithm
-        algorithm.run(hyperGraph)
     }
 }

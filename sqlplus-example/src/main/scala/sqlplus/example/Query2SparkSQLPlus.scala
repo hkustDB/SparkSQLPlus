@@ -21,41 +21,38 @@ object Query2SparkSQLPlus {
 		}).persist()
 		v1.count()
 
-		val v2 = v1.map(fields => Array(fields(0).asInstanceOf[Int], fields(1).asInstanceOf[Int])).cache()
+		val v2 = v1.map(arr => arr.map(x => x.asInstanceOf[Int])).cache()
 		v2.count()
 		val v3 = spark.sparkContext.lftj(Array(v2), 3, 3,
 			Array(Array(0, 1, 2)),
-			Array(Array((0, 0), (1, 1)), Array((0, 1), (1, 2)), Array((0, 2), (1, 0))),
-			Array(Array(0, 1), Array(0, 1), Array(1, 0))).cache()
-
-		val v4 = spark.sparkContext.lftj(Array(v2), 3, 3,
-			Array(Array(0, 1, 2)),
 			Array(Array((0, 1), (1, 2)), Array((0, 2), (1, 0)), Array((0, 0), (1, 1))),
 			Array(Array(0, 1), Array(1, 0), Array(0, 1))).cache()
+		val v4 = v3.keyBy(x => x(1).asInstanceOf[Int])
+		val v5 = v4.appendExtraColumn(x => ((x(1).asInstanceOf[Int] + x(2).asInstanceOf[Int]).asInstanceOf[Int] + x(0).asInstanceOf[Int]))
+		val v6 = v5.groupBy()
+		val v7 = v6.sortValuesWith[Int, Int, Int, Int](3, (x: Int, y: Int) => intLessThan(y, x)).persist()
+		val v8 = v7.extractFieldInHeadElement(3)
+		val v9 = spark.sparkContext.lftj(Array(v2), 3, 3,
+			Array(Array(0, 1, 2)),
+			Array(Array((0, 2), (1, 0)), Array((0, 0), (1, 1)), Array((0, 1), (1, 2))),
+			Array(Array(1, 0), Array(0, 1), Array(0, 1))).cache()
+		val v10 = v9.keyBy(x => x(0).asInstanceOf[Int])
+		val v11 = v10.appendExtraColumn(x => ((x(2).asInstanceOf[Int] + x(0).asInstanceOf[Int]).asInstanceOf[Int] + x(1).asInstanceOf[Int]))
+		val v12 = v11.groupBy()
+		val v13 = v12.sortValuesWith[Int, Int, Int, Int](3, (x: Int, y: Int) => intLessThan(x, y)).persist()
+		val v14 = v13.extractFieldInHeadElement(3)
+		val v15 = v1.keyBy(x => x(1).asInstanceOf[Int])
+		val v16 = v15.appendExtraColumn(v8)
+		val v17 = v16.reKeyBy(x => x(0).asInstanceOf[Int])
+		val v18 = v17.appendExtraColumn(v14)
+		val v19 = v18.filter(x => intLessThan(x._2(3).asInstanceOf[Int], x._2(2).asInstanceOf[Int]))
 
-		val v5 = v3.keyBy(x => x(1).asInstanceOf[Int])
-		val v6 = v5.appendExtraColumn(x => ((x(0).asInstanceOf[Int] + x(1).asInstanceOf[Int]).asInstanceOf[Int] + x(2).asInstanceOf[Int]))
-		val v7 = v6.groupBy()
-		val v8 = v7.sortValuesWith[Int, Int, Int, Int](3, (x: Int, y: Int) => intLessThan(x, y)).persist()
-		val v9 = v8.extractFieldInHeadElement(3)
-		val v10 = v1.keyBy(x => x(0).asInstanceOf[Int])
-		val v11 = v10.appendExtraColumn(v9)
-		val v12 = v11.reKeyBy(x => x(1).asInstanceOf[Int])
-		val v13 = v12.groupBy()
-		val v14 = v13.sortValuesWith[Int, Int, Int, Int](2, (x: Int, y: Int) => intLessThan(x, y)).persist()
-		val v15 = v14.extractFieldInHeadElement(2)
-		val v16 = v4.keyBy(x => x(1).asInstanceOf[Int])
-		val v17 = v16.appendExtraColumn(v15)
-		val v18 = v17.reKeyBy(x => x(0).asInstanceOf[Int])
-		val v19 = v18.appendExtraColumn(x => ((x(1).asInstanceOf[Int] + x(2).asInstanceOf[Int]).asInstanceOf[Int] + x(0).asInstanceOf[Int]))
-		val v20 = v19.filter(x => intLessThan(x._2(3).asInstanceOf[Int], x._2(4).asInstanceOf[Int]))
-
-		val v21 = v20.map(t => (t._2(1).asInstanceOf[Int], Array(t._2(0), t._2(2), t._2(4))))
-		val v22 = v21.enumerateWithOneComparison[Int, Int, Int, Int, Int](v14, 2, 2, (x: Int, y: Int) => intLessThan(y, x), Array(0, 1, 2), Array(1), (l, r) => (r(0).asInstanceOf[Int]))
-		val v23 = v22.enumerateWithOneComparison[Int, Int, Int, Int, Int](v8, 2, 3, (x: Int, y: Int) => intLessThan(y, x), Array(0, 1, 3), Array(0, 1, 2))
+		val v20 = v19.map(t => (t._2(0).asInstanceOf[Int], Array(t._2(1), t._2(2))))
+		val v21 = v20.enumerateWithOneComparison[Int, Int, Int, Int, Int](v13, 1, 3, (x: Int, y: Int) => intLessThan(y, x), Array(), Array(0, 1, 2, 3), (l, r) => (l(0).asInstanceOf[Int]))
+		val v22 = v21.enumerateWithOneComparison[Int, Int, Int, Int, Int](v7, 3, 3, (x: Int, y: Int) => intLessThan(x, y), Array(0, 1, 2), Array(0, 1, 2))
 
 		val ts1 = System.currentTimeMillis()
-		val cnt = v23.count()
+		val cnt = v22.count()
 		val ts2 = System.currentTimeMillis()
 		LOGGER.info("Query2-SparkSQLPlus cnt: " + cnt)
 		LOGGER.info("Query2-SparkSQLPlus time: " + (ts2 - ts1) / 1000f)

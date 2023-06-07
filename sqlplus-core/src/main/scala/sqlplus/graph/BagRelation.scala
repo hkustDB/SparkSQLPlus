@@ -14,9 +14,18 @@ class BagRelation(bag: Set[Relation]) extends Relation {
     override def getVariableList(): List[Variable] = variableList
 
     def getInternalRelations: List[Relation] = inside
+
+    override def toString: String = {
+        val internal = inside.map(r => r.getTableDisplayName()).mkString(",")
+        val columns = variableList.map(n => n.name + ":" + n.dataType).mkString("(", ",", ")")
+        s"BagRelation[id=${getRelationId()}][internal=$internal][cols=$columns]"
+    }
 }
 
 object BagRelation {
-    def createFrom(relations: Set[Relation]): BagRelation =
+    def createFrom(relations: Set[Relation]): BagRelation = {
+        // we don't allow nested bag relations
+        assert(relations.forall(r => !r.isInstanceOf[BagRelation]))
         new BagRelation(relations)
+    }
 }

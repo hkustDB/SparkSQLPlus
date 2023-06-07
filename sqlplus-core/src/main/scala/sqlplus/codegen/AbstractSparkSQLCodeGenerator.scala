@@ -66,7 +66,8 @@ abstract class AbstractSparkSQLCodeGenerator(tables: List[SqlPlusTable], sql: St
             newLine(builder)
 
             val table = tables(i)
-            val schema = table.getTableColumns.map(col => s"${col.getName} ${col.getType.toUpperCase}").mkString(", ")
+            val schema = table.getTableColumns.map(col =>
+                s"${col.getName} ${if (col.getType.equalsIgnoreCase("VARCHAR")) "STRING" else col.getType.toUpperCase}").mkString(", ")
 
             indent(builder, 2).append(s"val schema${i} = ").append("\"").append(schema).append("\"\n")
             indent(builder, 2).append(s"val df${i} = spark.read.format(").append("\"csv\")").append("\n")

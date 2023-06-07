@@ -32,6 +32,14 @@ case class ApplySemiJoinAction(currentRelationId: Int, childRelationId: Int, joi
                                joinKeyIndicesInChild: List[Int], joinKeyTypesInChild: List[DataType]) extends ReduceAction
 case class ApplySelfComparisonAction(relationId: Int, keyIndices: List[Int], keyTypes: List[DataType],
                                      functionGenerator: String => String) extends ReduceAction
+
+case class MaterializeBagRelationAction(relationId: Int, tableScanRelationNames: List[String],
+                                        relationCount: Int, variableCount: Int, sourceTableIndexToRelations: String, redirects: String, variableIndices: String) extends ReduceAction
+
+case class MaterializeAuxiliaryRelationAction(relationId: Int, supportingRelationId: Int, projectIndices: List[Int], projectTypes: List[DataType]) extends ReduceAction
+
+case class MaterializeAggregatedRelationAction(relationId: Int, tableName: String, groupIndices: List[Int], aggregateFunction: String) extends ReduceAction
+
 case class EndOfReductionAction(relationId: Int) extends ReduceAction
 
 sealed trait EnumerateAction

@@ -1,8 +1,7 @@
 package sqlplus.example
 
-import org.apache.spark.sql.types.{IntegerType, StructField, StructType}
-import org.apache.spark.sql.{Row, SparkSession}
-import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.SparkConf
 import org.slf4j.LoggerFactory
 
 object Query8SparkSQL {
@@ -11,41 +10,29 @@ object Query8SparkSQL {
 	def main(args: Array[String]): Unit = {
 		val conf = new SparkConf()
 		conf.setAppName("Query8SparkSQL")
-		val sc = new SparkContext(conf)
+		val spark = SparkSession.builder.config(conf).getOrCreate()
 
-		val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
+		val schema0 = "src INTEGER, dst INTEGER"
+		val df0 = spark.read.format("csv")
+			.option("delimiter", ",")
+			.option("quote", "")
+			.option("header", "false")
+			.schema(schema0)
+			.load(s"${args.head}/graph.dat").persist()
+		df0.count()
+		df0.createOrReplaceTempView("Graph")
 
-		// Modify to the correct input file path
-		val lines = sc.textFile(s"${args.head}/graph.dat")
-		val graph = lines.map(line => {
-			val temp = line.split(",")
-			(temp(0).toInt, temp(1).toInt)
-		})
-		graph.cache()
-
-		val graphSchemaString = "src dst"
-		val graphFields = graphSchemaString.split(" ")
-			.map(fieldName => StructField(fieldName, IntegerType, nullable = false))
-		val graphSchema = StructType(graphFields)
-
-		val graphRow = graph.map(attributes => Row(attributes._1, attributes._2))
-
-		val graphDF = spark.createDataFrame(graphRow, graphSchema)
-
-		graphDF.createOrReplaceTempView("Graph")
-
-		graphDF.persist()
-
-		val resultDF = spark.sql(
-			"SELECT g1.src, g1.dst, g2.dst, g3.dst, g4.dst " +
-				"From Graph g1, Graph g2, Graph g3, Graph g4 " +
-				"where g1.dst = g2.src and g2.dst = g3.src and g3.dst = g4.src " +
-				"and g2.src < g2.dst and g3.src < g3.dst")
+		val result = spark.sql(
+			"SELECT g1.src AS src, g1.dst AS via1, g2.dst AS via2, g3.dst AS via3, g4.dst AS dst " +
+				"FROM Graph AS g1, Graph AS g2, Graph AS g3, Graph AS g4 " +
+				"WHERE g1.dst = g2.src AND g2.dst = g3.src AND g3.dst = g4.src " +
+				"AND g2.src < g2.dst AND g3.src < g3.dst"
+		)
 
 		val ts1 = System.currentTimeMillis()
-		val resultCnt = resultDF.count()
+		val cnt = result.count()
 		val ts2 = System.currentTimeMillis()
-		LOGGER.info("Query8-SparkSQL cnt: " + resultCnt)
+		LOGGER.info("Query8-SparkSQL cnt: " + cnt)
 		LOGGER.info("Query8-SparkSQL time: " + (ts2 - ts1) / 1000f)
 
 		spark.close()

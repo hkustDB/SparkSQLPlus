@@ -43,8 +43,6 @@ public class CompileController {
 
     private List<Tuple2<JoinTree, ComparisonHyperGraph>> candidates = null;
 
-    private List<Relation> relations = null;
-
     private CatalogManager catalogManager = null;
 
     private VariableManager variableManager = null;
@@ -73,16 +71,16 @@ public class CompileController {
             variableManager = new VariableManager();
             LogicalPlanConverter converter = new LogicalPlanConverter(variableManager);
             Tuple3<scala.collection.immutable.List<Tuple2<JoinTree, ComparisonHyperGraph>>,
-                                scala.collection.immutable.List<Variable>, String> runGyoResult = converter.runGyo(logicalPlan);
-            outputVariables = runGyoResult._2();
-            isFullQuery = runGyoResult._3().equalsIgnoreCase("full");
+                                scala.collection.immutable.List<Variable>, String> runResult = converter.run(logicalPlan);
+            outputVariables = runResult._2();
+            isFullQuery = runResult._3().equalsIgnoreCase("full");
             if (!isFullQuery) {
                 // is the query is non-full, we add DISTINCT keyword to SparkSQL explicitly
                 sql = sql.replaceFirst("[s|S][e|E][l|L][e|E][c|C][t|T]", "SELECT DISTINCT");
             }
 
             candidates = scala.collection.JavaConverters.seqAsJavaList(
-                    converter.candidatesWithLimit(runGyoResult._1(), 4));
+                    converter.candidatesWithLimit(runResult._1(), 4));
             return mkSubmitResult(candidates);
         } catch (SqlParseException e) {
             throw new RuntimeException(e);
@@ -106,8 +104,7 @@ public class CompileController {
         CompileSubmitResponse response = new CompileSubmitResponse();
         response.setCandidates(candidates.stream().map(tuple -> {
             Candidate candidate = new Candidate();
-            // extract all relations
-            relations = extractRelations(tuple._1);
+            List<Relation> relations = extractRelations(tuple._1);
             List<BagRelation> bagRelations = relations.stream().filter(r -> r instanceof BagRelation).map(r -> (BagRelation)r).collect(Collectors.toList());
             // assign new name to bag relations
             Map<String, String> bagRelationNames = new HashMap<>();
@@ -209,7 +206,6 @@ public class CompileController {
         result.setCode(200);
 
         ConvertResult convertResult = new ConvertResult(
-                scala.collection.JavaConverters.asScalaBuffer(relations).toList(),
                 outputVariables,
                 candidates.get(request.getIndex())._1,
                 candidates.get(request.getIndex())._2

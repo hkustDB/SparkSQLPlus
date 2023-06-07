@@ -1,8 +1,8 @@
 package sqlplus.graph
 
 /**
- * A joinTreeEdge is a undirected edge from child relation to parent relation.
- * Since it is undirected, node1 and node2 are interchangeable. So x = JoinTreeEdge(a,b) and
+ * A joinTreeEdge is a directed edge from parent relation to child relation.
+ * Since it is also used in finding the shortest path, x = JoinTreeEdge(a,b) and
  * y = JoinTreeEdge(b,a) should have the same hashcode, and x.equals(y) must return true.
  *
  * @param node1 the first relation
@@ -13,7 +13,7 @@ class JoinTreeEdge(val node1: Relation, val node2: Relation) extends Edge[Relati
     override def getDst: Relation = node2
 
     override def toString: String =
-        "JoinTreeEdge(" + node1.toString + "<->" + node2.toString + ")"
+        "JoinTreeEdge(" + node1.toString + "->" + node2.toString + ")"
 
     override def hashCode(): Int = node1.## ^ node2.##
 
@@ -25,10 +25,4 @@ class JoinTreeEdge(val node1: Relation, val node2: Relation) extends Edge[Relati
 
     def connects(n1: Relation, n2: Relation): Boolean =
         (n1.equals(node1) && n2.equals(node2)) || (n1.equals(node2) && n2.equals(node1))
-}
-
-object JoinTreeEdge {
-    def apply(child: Relation, parent: Relation): JoinTreeEdge = {
-        new JoinTreeEdge(child, parent)
-    }
 }

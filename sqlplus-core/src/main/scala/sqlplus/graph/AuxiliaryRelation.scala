@@ -3,7 +3,7 @@ package sqlplus.graph
 import AuxiliaryRelation.createFrom
 import sqlplus.expression.Variable
 
-class AuxiliaryRelation(val tableName: String, val variables: List[Variable], val sourceRelation: Relation, val tableDisplayName: String) extends Relation {
+class AuxiliaryRelation(val tableName: String, val variables: List[Variable], val supportingRelation: Relation, val tableDisplayName: String) extends Relation {
     override def getTableName(): String = tableName
 
     override def getVariableList(): List[Variable] = variables
@@ -18,20 +18,15 @@ class AuxiliaryRelation(val tableName: String, val variables: List[Variable], va
 
 object AuxiliaryRelation {
     /**
-     * create a AuxiliaryRelation by removing some variables from the given relation.
+     * create a AuxiliaryRelation from the given relation.
      * @param relation the relation
      * @param remainVariables the remaining variables
      * @return a new AuxiliaryRelation
      */
-    def createFrom(relation: Relation, remainVariables: List[Variable]): AuxiliaryRelation = {
-        val name = s"^${relation.getTableName()}"
-        val displayName = s"^${relation.getTableDisplayName()}"
-        assert(remainVariables.forall(v => relation.getNodes().contains(v)))
-        relation match {
-            case relation: TableScanRelation => new AuxiliaryRelation(name, remainVariables, relation, displayName)
-            case relation: AggregatedRelation => new AuxiliaryRelation(name, remainVariables, relation, displayName)
-            case relation: AuxiliaryRelation => new AuxiliaryRelation(name, remainVariables, relation.sourceRelation, displayName)
-            case relation: BagRelation => new AuxiliaryRelation(name, remainVariables, relation, displayName)
-        }
+    def createFrom(supportingRelation: Relation, remainVariables: List[Variable]): AuxiliaryRelation = {
+        val name = s"[${supportingRelation.getTableName()}]"
+        val displayName = s"[${supportingRelation.getTableDisplayName()}]"
+        assert(remainVariables.forall(v => supportingRelation.getNodes().contains(v)))
+        new AuxiliaryRelation(name, remainVariables, supportingRelation, displayName)
     }
 }

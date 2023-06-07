@@ -1,17 +1,14 @@
 package sqlplus.codegen
 
-import sqlplus.compile.{AppendCommonExtraColumnAction, AppendComparisonExtraColumnAction, ApplySelfComparisonAction, ApplySemiJoinAction, CountResultAction, CreateCommonExtraColumnAction, CreateComparisonExtraColumnAction, CreateComputationExtraColumnAction, CreateTransparentCommonExtraColumnAction, EndOfReductionAction, EnumerateAction, EnumerateWithMoreThanTwoComparisonsAction, EnumerateWithOneComparisonAction, EnumerateWithTwoComparisonsAction, EnumerateWithoutComparisonAction, FinalAction, FormatResultAction, ReduceAction, RelationInfo, RootPrepareEnumerationAction}
-import sqlplus.expression.{BinaryOperator, Operator, Variable}
+import sqlplus.compile.{AppendCommonExtraColumnAction, AppendComparisonExtraColumnAction, ApplySelfComparisonAction, ApplySemiJoinAction, CountResultAction, CreateCommonExtraColumnAction, CreateComparisonExtraColumnAction, CreateComputationExtraColumnAction, CreateTransparentCommonExtraColumnAction, EndOfReductionAction, EnumerateAction, EnumerateWithMoreThanTwoComparisonsAction, EnumerateWithOneComparisonAction, EnumerateWithTwoComparisonsAction, EnumerateWithoutComparisonAction, FinalAction, FormatResultAction, MaterializeAggregatedRelationAction, MaterializeAuxiliaryRelationAction, MaterializeBagRelationAction, ReduceAction, RelationInfo, RootPrepareEnumerationAction}
+import sqlplus.expression.{Operator, Variable}
 import sqlplus.graph.{AggregatedRelation, AuxiliaryRelation, BagRelation, TableScanRelation}
 import sqlplus.plan.table.SqlPlusTable
-import sqlplus.types.{DataType, IntDataType}
+import sqlplus.types.DataType
 
 import scala.collection.mutable
-import scala.collection.mutable.ListBuffer
 
 abstract class AbstractSparkSQLPlusCodeGenerator(val comparisonOperators: Set[Operator], val sourceTables: Set[SqlPlusTable],
-                              val aggregatedRelations: List[AggregatedRelation], val auxiliaryRelations: List[AuxiliaryRelation],
-                              val bagRelations: List[BagRelation],
                               val relationIdToInfo: Map[Int, RelationInfo],
                               val reduceActions: List[ReduceAction], val enumerateActions: List[EnumerateAction], val finalAction: FinalAction)
     extends AbstractScalaCodeGenerator {
@@ -73,12 +70,6 @@ abstract class AbstractSparkSQLPlusCodeGenerator(val comparisonOperators: Set[Op
 
         generateSourceTables(builder)
 
-        generateAggregatedSourceTables(builder)
-
-        generateBagSourceTables(builder)
-
-        generateAuxiliarySourceTables(builder)
-
         generateReduction(builder)
 
         val variableName = generateEnumeration(builder)
@@ -135,138 +126,6 @@ abstract class AbstractSparkSQLPlusCodeGenerator(val comparisonOperators: Set[Op
         }
     }
 
-    private def generateAggregatedSourceTables(builder: mutable.StringBuilder): Unit = {
-        for (relation <- aggregatedRelations) {
-            newLine(builder)
-
-            relation.func match {
-                case "COUNT" =>
-                    val fromVariableName = sourceTableNameToVariableNameDict(relation.tableName)
-                    val groupFields = relation.group.map(i => "fields(" + i + ")").mkString("(", ", ", ")")
-                    val variableName = variableNameAssigner.getNewVariableName()
-                    indent(builder, 2).append("val ").append(variableName).append(" = ").append(fromVariableName)
-                        .append(".map(fields => (").append(groupFields).append(", 1L))")
-                        .append(".reduceByKey(_ + _)")
-                        .append(".map(x => Array[Any](" + (0 to relation.group.length).map(i => "x._" + (i + 1)).mkString(", ") + ")).persist()").append("\n")
-                    indent(builder, 2).append(variableName).append(".count()").append("\n")
-                    aggregatedRelationIdToVariableNameDict(relation.getRelationId()) = variableName
-                case _ => throw new UnsupportedOperationException
-            }
-        }
-    }
-
-    private def generateBagSourceTables(builder: mutable.StringBuilder): Unit = {
-        for (bagRelation <- bagRelations) {
-            newLine(builder)
-
-            // TODO: support not only triangle
-            assert(bagRelation.getInternalRelations.size == 3)
-            // should not put AuxiliaryRelation in BagRelation
-            assert(bagRelation.getInternalRelations.forall(r => !r.isInstanceOf[AuxiliaryRelation]))
-            // only support normal tables
-            assert(bagRelation.getInternalRelations.forall(r => r.isInstanceOf[TableScanRelation]))
-            // currently all columns must be INT type
-            assert(bagRelation.getInternalRelations.forall(r => r.getVariableList().forall(v => v.dataType == IntDataType)))
-
-            // currently, the input relations to LFTJ must be Array[Int]
-            // can be removed if we support arbitrary types
-            for (internalRelation <- bagRelation.getInternalRelations) {
-                val tableName = internalRelation.asInstanceOf[TableScanRelation].tableName
-                if (convertedSourceTableNameToVariableNameDict.contains(tableName)) {
-                    convertedSourceTableNameToVariableNameDict(tableName)
-                } else {
-                    val sourceVariableName = sourceTableNameToVariableNameDict(tableName)
-                    val size = internalRelation.getVariableList().size
-                    val createArray = (0 until size).map(i => s"fields($i).asInstanceOf[Int]").mkString("fields => Array(", ",", ")")
-                    val convertedVariableName = variableNameAssigner.getNewVariableName()
-                    indent(builder, 2).append("val ").append(convertedVariableName).append(" = ").append(sourceVariableName)
-                        .append(".map(").append(createArray).append(").cache()").append("\n")
-                    indent(builder, 2).append(convertedVariableName).append(".count()").append("\n")
-
-                    convertedSourceTableNameToVariableNameDict(tableName) = convertedVariableName
-                }
-            }
-
-            // generate lftj calls
-            val involvedVariables = bagRelation.getInternalRelations.flatMap(r => r.getVariableList()).distinct.sortBy(v => v.name)
-            val involvedVariableToIndexDict = involvedVariables.map(v => v.name).zipWithIndex.toMap
-            val sortedRelations = bagRelation.getInternalRelations.sortBy(r => r.getRelationId())
-            val relationIdToIndexDict = sortedRelations.map(r => r.getRelationId()).zipWithIndex.toMap
-            val groups = bagRelation.getInternalRelations.groupBy(r => r.asInstanceOf[TableScanRelation].tableName)
-                .mapValues(l => l.sortBy(r => relationIdToIndexDict(r.getRelationId())))
-            val sourceTableNames = groups.keys.toList
-
-            // argument 1
-            val sourceTableVariableNames = sourceTableNames.map(n => convertedSourceTableNameToVariableNameDict(n)).mkString("Array(", ",", ")")
-
-            // argument 2
-            val relationCount = bagRelation.getInternalRelations.size
-
-            // argument 3
-            val variableCount = involvedVariables.size
-
-            // argument 4
-            val sourceTableIndexToRelations = sourceTableNames.indices.map(i => {
-                val sourceTableName = sourceTableNames(i)
-                val group = groups(sourceTableName)
-                val relationIndices = group.map(r => relationIdToIndexDict(r.getRelationId()))
-                relationIndices.mkString("Array(", ",", ")")
-            }).mkString("Array(", ",", ")")
-
-            // argument 5&6
-            val redirectBuffer = ListBuffer.empty[String]
-            val variableIndicesBuffer = ListBuffer.empty[String]
-            for (relation <- sortedRelations) {
-                val redirect = relation.getVariableList().zipWithIndex.map(t => (t._2, involvedVariableToIndexDict(t._1.name)))
-                    .map(t => s"(${t._1},${t._2})").mkString("Array(", ",", ")")
-                redirectBuffer.append(redirect)
-
-                // build the own view of this relation. e.g., in the view of relation S(C,A), the source table schema is (C,A)
-                // however, assuming the total order of variables is A,B,C, the tuples of S should be arrange in order (A,C)
-                val view = relation.getVariableList().map(v => v.name).zipWithIndex.toMap
-                val variableIndices = relation.getVariableList().map(v => v.name)
-                    .sortBy(involvedVariableToIndexDict).map(view).mkString("Array(", ",", ")")
-                variableIndicesBuffer.append(variableIndices)
-            }
-            val redirects = redirectBuffer.mkString("Array(", ",", ")")
-            val variableIndices = variableIndicesBuffer.mkString("Array(", ",", ")")
-
-            val bagVariableName = variableNameAssigner.getNewVariableName()
-            indent(builder, 2).append("val ").append(bagVariableName).append(" = spark.sparkContext.lftj(")
-                .append(sourceTableVariableNames).append(", ")
-                .append(relationCount).append(", ")
-                .append(variableCount).append(", ").append("\n")
-            indent(builder, 4).append(sourceTableIndexToRelations).append(", ").append("\n")
-            indent(builder, 4).append(redirects).append(", ").append("\n")
-            indent(builder, 4).append(variableIndices).append(").cache()").append("\n")
-
-            bagRelationIdToVariableNameDict(bagRelation.getRelationId()) = bagVariableName
-        }
-    }
-
-    private def generateAuxiliarySourceTables(builder: mutable.StringBuilder): Unit = {
-        for (relation <- auxiliaryRelations) {
-            newLine(builder)
-
-            val sourceRelation = relation.sourceRelation
-            sourceRelation match {
-                case tableScanRelation: TableScanRelation =>
-                    val sourceVariableList = tableScanRelation.getVariableList()
-                    val sourceVariableIndicesMap = sourceVariableList.zipWithIndex.toMap
-                    val expectedVariableList = relation.getVariableList()
-                    val expectedVariableIndices = expectedVariableList.map(sourceVariableIndicesMap)
-                    val fromVariableName = sourceTableNameToVariableNameDict(tableScanRelation.tableName)
-                    val func = expectedVariableIndices.map(i => s"x($i)").mkString("x => Array(", ", ", ")")
-                    val variableName = variableNameAssigner.getNewVariableName()
-                    indent(builder, 2).append("val ").append(variableName).append(" = ").append(fromVariableName)
-                        .append(".map(").append(func).append(")").append("\n")
-                    auxiliaryRelationIdToVariableNameDict(relation.getRelationId()) = variableName
-                case _ => throw new UnsupportedOperationException
-                // TODO: support non-full queries over bag relations
-            }
-        }
-    }
-
     private def generateReduction(builder: mutable.StringBuilder): Unit = {
         newLine(builder)
 
@@ -288,6 +147,12 @@ abstract class AbstractSparkSQLPlusCodeGenerator(val comparisonOperators: Set[Op
                     generateApplySelfComparisonAction(builder, applySelfComparisonAction)
                 case applySemiJoinAction: ApplySemiJoinAction =>
                     generateApplySemiJoinAction(builder, applySemiJoinAction)
+                case materializeAuxiliaryRelationAction: MaterializeAuxiliaryRelationAction =>
+                    generateMaterializeAuxiliaryRelationAction(builder, materializeAuxiliaryRelationAction)
+                case materializeBagRelationAction: MaterializeBagRelationAction =>
+                    generateMaterializeBagRelationAction(builder, materializeBagRelationAction)
+                case materializeAggregatedRelationAction: MaterializeAggregatedRelationAction =>
+                    generateMaterializeAggregatedRelationAction(builder, materializeAggregatedRelationAction)
                 case EndOfReductionAction(relationId) =>
             }
         }
@@ -449,6 +314,70 @@ abstract class AbstractSparkSQLPlusCodeGenerator(val comparisonOperators: Set[Op
             .append(childKeyedVariableName).append(")").append("\n")
         activeRelationRecord.clean(currentRelationId)
         activeRelationRecord.addKeyedVariableName(currentRelationId, joinKeyIndicesInCurrent, newVariableName)
+    }
+
+    // TODO: we can use the group by and sorted RDD directly, avoiding the extra distinct
+    def generateMaterializeAuxiliaryRelationAction(builder: mutable.StringBuilder, action: MaterializeAuxiliaryRelationAction): Unit = {
+        val relationId = action.relationId
+        val supportingRelationId = action.supportingRelationId
+        val projectIndices = action.projectIndices
+        val projectTypes = action.projectTypes
+        val supportingKeyedVariableName = getKeyedVariableNameByRelationId(builder, supportingRelationId, projectIndices, projectTypes)
+        val newVariableName = variableNameAssigner.getNewVariableName()
+
+        // we cannot use Array to deduplicate
+        val func1 = projectIndices.map(i => s"x($i)").mkString("x => (", ", ", ")")
+        // change back to Array after distinct
+        val func2 = projectIndices.indices.map(i => s"x._${i+1}").mkString("x => Array(", ", ", ")")
+
+        indent(builder, 2).append("val ").append(newVariableName).append(" = ")
+            .append(supportingKeyedVariableName).append(s".mapValues($func1).distinct().mapValues($func2)").append("\n")
+        activeRelationRecord.clean(relationId)
+        activeRelationRecord.addKeyedVariableName(relationId, projectIndices, newVariableName)
+    }
+
+    def generateMaterializeBagRelationAction(builder: mutable.StringBuilder, action: MaterializeBagRelationAction): Unit = {
+        action.tableScanRelationNames.foreach(tableName => {
+            if (convertedSourceTableNameToVariableNameDict.contains(tableName)) {
+                convertedSourceTableNameToVariableNameDict(tableName)
+            } else {
+                val sourceVariableName = sourceTableNameToVariableNameDict(tableName)
+                val convertedVariableName = variableNameAssigner.getNewVariableName()
+                indent(builder, 2).append("val ").append(convertedVariableName).append(" = ").append(sourceVariableName)
+                    .append(".map(").append("arr => arr.map(x => x.asInstanceOf[Int])").append(").cache()").append("\n")
+                indent(builder, 2).append(convertedVariableName).append(".count()").append("\n")
+
+                convertedSourceTableNameToVariableNameDict(tableName) = convertedVariableName
+            }
+        })
+        val tableScanRelationVariableNames = action.tableScanRelationNames.map(convertedSourceTableNameToVariableNameDict).mkString("Array(", ",", ")")
+
+        val bagVariableName = variableNameAssigner.getNewVariableName()
+        indent(builder, 2).append("val ").append(bagVariableName).append(" = spark.sparkContext.lftj(")
+            .append(tableScanRelationVariableNames).append(", ")
+            .append(action.relationCount).append(", ")
+            .append(action.variableCount).append(", ").append("\n")
+        indent(builder, 4).append(action.sourceTableIndexToRelations).append(", ").append("\n")
+        indent(builder, 4).append(action.redirects).append(", ").append("\n")
+        indent(builder, 4).append(action.variableIndices).append(").cache()").append("\n")
+
+        bagRelationIdToVariableNameDict(action.relationId) = bagVariableName
+    }
+
+    def generateMaterializeAggregatedRelationAction(builder: mutable.StringBuilder, action: MaterializeAggregatedRelationAction): Unit = {
+        action.aggregateFunction match {
+            case "COUNT" =>
+                val fromVariableName = sourceTableNameToVariableNameDict(action.tableName)
+                val groupFields = action.groupIndices.map(i => "fields(" + i + ")").mkString("(", ", ", ")")
+                val variableName = variableNameAssigner.getNewVariableName()
+                indent(builder, 2).append("val ").append(variableName).append(" = ").append(fromVariableName)
+                    .append(".map(fields => (").append(groupFields).append(", 1L))")
+                    .append(".reduceByKey(_ + _)")
+                    .append(".map(x => Array[Any](" + (0 to action.groupIndices.length).map(i => "x._" + (i + 1)).mkString(", ") + ")).persist()").append("\n")
+                indent(builder, 2).append(variableName).append(".count()").append("\n")
+                aggregatedRelationIdToVariableNameDict(action.relationId) = variableName
+            case _ => throw new UnsupportedOperationException
+        }
     }
 
     def getKeyedVariableNameByRelationId(builder: mutable.StringBuilder, relationId: Int, keyIndices: List[Int], keyTypes: List[DataType]): String = {

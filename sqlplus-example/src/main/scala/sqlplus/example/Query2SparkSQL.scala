@@ -11,31 +11,34 @@ object Query2SparkSQL {
     def main(args: Array[String]): Unit = {
         val conf = new SparkConf()
         conf.setAppName("Query2SparkSQL")
-        val sc = new SparkContext(conf)
-        val spark = SparkSession.builder.config(sc.getConf).getOrCreate()
-        val schema = "src INT, dst INT"
+        val spark = SparkSession.builder.config(conf).getOrCreate()
 
-        val df = spark.read.format("csv")
-            .option("delimiter", ",").option("quote", "")
+        val schema0 = "src INTEGER, dst INTEGER"
+        val df0 = spark.read.format("csv")
+            .option("delimiter", ",")
+            .option("quote", "")
             .option("header", "false")
-            .schema(schema)
-            .load(s"${args.head}/graph.dat")
-        df.persist()
-        df.count()
-        df.createOrReplaceTempView("Graph")
+            .schema(schema0)
+            .load(s"${args.head}/graph.dat").persist()
+        df0.count()
+        df0.createOrReplaceTempView("Graph")
 
-        val resultDF = spark.sql(
+        val result = spark.sql(
             "SELECT * " +
-                "From Graph g1, Graph g2, Graph g3, Graph g4, Graph g5, Graph g6, Graph g7 " +
-                "where g1.src = g3.dst and g2.src = g1.dst and g3.src=g2.dst " +
-                "and g4.src = g6.dst and g5.src = g4.dst and g6.src = g5.dst " +
-                s"and g1.dst = g7.src and g4.src = g7.dst and g1.src+g2.src+g3.src < g4.src+g5.src+g6.src")
+                "FROM Graph AS g1, Graph AS g2, Graph AS g3, " +
+                "Graph AS g4, Graph AS g5, Graph AS g6, Graph AS g7 " +
+                "WHERE g1.dst = g2.src AND g2.dst = g3.src AND g3.dst = g1.src " +
+                "AND g4.dst = g5.src AND g5.dst = g6.src AND g6.dst = g4.src " +
+                "AND g1.dst = g7.src AND g7.dst = g4.src " +
+                "AND g1.src + g2.src + g3.src < g4.src + g5.src + g6.src"
+        )
 
         val ts1 = System.currentTimeMillis()
-        val resultCnt = resultDF.count()
+        val cnt = result.count()
         val ts2 = System.currentTimeMillis()
-        LOGGER.info("Query2-SparkSQL cnt: " + resultCnt)
+        LOGGER.info("Query2-SparkSQL cnt: " + cnt)
         LOGGER.info("Query2-SparkSQL time: " + (ts2 - ts1) / 1000f)
+
         spark.close()
     }
 }
