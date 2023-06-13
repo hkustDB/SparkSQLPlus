@@ -92,6 +92,10 @@ experiment:
 ### Build
 Run `mvn clean package`.
 
+### Download data
+Run `bash examples/data/download.sh` to download a graph from [SNAP](https://snap.stanford.edu). 
+It is also possible to use other input data as long as the columns are separated by commas.
+
 ## Usage
 The example queries are in `examples/query`.
 

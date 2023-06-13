@@ -1,4 +1,4 @@
-Create table TRADE (
+CREATE TABLE Trade (
     T_ID BIGINT,
     T_DTS TIMESTAMP,
     T_TT_ID VARCHAR,
