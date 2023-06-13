@@ -68,7 +68,29 @@ public class SqlplusConfig {
     public void init() {
         if (home == null || home.equals("")) {
             home = System.getProperty("user.dir");
-            LOGGER.warn("Property sqlplus.home is not set. Using " + home);
+            LOGGER.warn("Property sqlplus.home is not set. Now using " + home);
+        }
+
+        validateConfigs();
+    }
+
+    private void validateConfigs() {
+        if (!isLocalMode()) {
+            // in Remote mode, the prefix is added automatically
+            if (hdfsPath.startsWith("hdfs://")) {
+                hdfsPath = hdfsPath.substring("hdfs://".length());
+                LOGGER.warn("Please do NOT include the 'hdfs://' prefix in experiment.hdfs.path. Now using " + hdfsPath);
+            }
+
+            if (experimentDataPath.startsWith("hdfs://")) {
+                experimentDataPath = experimentDataPath.substring("hdfs://".length());
+                LOGGER.warn("Please do NOT include the 'hdfs://' prefix in experiment.data.path. Now using " + experimentDataPath);
+            }
+        } else {
+            // in Local mode, the HDFS data path is unsupported
+            if (experimentDataPath.startsWith("hdfs://")) {
+                throw new RuntimeException("HDFS data path is unsupported in Local mode.");
+            }
         }
     }
 

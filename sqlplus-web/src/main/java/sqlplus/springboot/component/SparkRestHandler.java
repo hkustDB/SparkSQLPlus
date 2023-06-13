@@ -37,14 +37,19 @@ public class SparkRestHandler {
     public Optional<String> create(String className, String appName) {
         SparkSubmissionsCreateRequest request = new SparkSubmissionsCreateRequest();
 
-        String exampleJarPath =
-                config.isLocalMode() ? config.getLocalExampleJarPath() : "hdfs://" + config.getRemoteExampleJarPath();
+        String exampleJarPath = "";
+        String libJarPath = "";
+        String dataPath = "";
 
-        String libJarPath =
-                config.isLocalMode() ? config.getLocalLibJarPath() : "hdfs://" + config.getRemoteLibJarPath();
-
-        String dataPath =
-                config.isLocalMode() ? config.getExperimentDataPath() : "hdfs://" + config.getExperimentDataPath();
+        if (config.isLocalMode()) {
+            exampleJarPath = config.getLocalExampleJarPath();
+            libJarPath = config.getLocalLibJarPath();
+            dataPath = config.getExperimentDataPath();
+        } else {
+            exampleJarPath = addHdfsPrefix(config.getRemoteExampleJarPath());
+            libJarPath = addHdfsPrefix(config.getRemoteLibJarPath());
+            dataPath = addHdfsPrefix(config.getExperimentDataPath());
+        }
 
         request.setAppResource(exampleJarPath);
         request.setAppArgs(Arrays.asList(dataPath));
@@ -74,6 +79,14 @@ public class SparkRestHandler {
         } catch (Exception e) {
             LOGGER.error("failed to call create", e);
             return Optional.empty();
+        }
+    }
+
+    private String addHdfsPrefix(String path) {
+        if (path.startsWith("/")) {
+            return "hdfs://" + path;
+        } else {
+            throw new RuntimeException("invalid path " + path);
         }
     }
 

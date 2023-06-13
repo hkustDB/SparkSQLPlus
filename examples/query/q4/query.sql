@@ -1,6 +1,6 @@
-SELECT P3.src AS src, P3.dst AS dst
-FROM path AS P1, path AS P2, path AS P3,
-(SELECT src, COUNT(*) AS cnt FROM path GROUP BY src) AS C1,
-(SELECT src, COUNT(*) AS cnt FROM path GROUP BY src) AS C2
-WHERE C1.src = P1.src AND P1.dst = P2.src AND P2.dst = P3.src AND P3.dst = C2.src
-AND C1.cnt < C2.cnt
+SELECT g3.src AS src, g3.dst AS dst
+FROM Graph AS g1, Graph AS g2, Graph AS g3,
+    (SELECT src, COUNT(*) AS cnt FROM Graph GROUP BY src) AS c1,
+    (SELECT src, COUNT(*) AS cnt FROM Graph GROUP BY src) AS c2
+WHERE c1.src = g1.src AND g1.dst = g2.src AND g2.dst = g3.src AND g3.dst = c2.src
+    AND c1.cnt < c2.cnt

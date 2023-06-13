@@ -1,10 +1,11 @@
-SELECT P1.src AS src, P1.dst AS via1, P3.src AS via2, P3.dst AS dst,
-    C1.cnt AS cnt1, C2.cnt AS cnt2, C3.cnt AS cnt3, C4.cnt AS cnt4
-FROM path AS P1, path AS P2, path AS P3,
-(SELECT src, COUNT(*) AS cnt FROM path GROUP BY src) AS C1,
-(SELECT src, COUNT(*) AS cnt FROM path GROUP BY src) AS C2,
-(SELECT src, COUNT(*) AS cnt FROM path GROUP BY src) AS C3,
-(SELECT dst, COUNT(*) AS cnt FROM path GROUP BY dst) AS C4
-WHERE P1.dst = P2.src AND P2.dst = P3.src
-AND C1.src = P1.src AND C2.src = P3.dst AND C3.src = P2.src AND C4.dst = P3.dst
-AND C1.cnt < C2.cnt AND C3.cnt < C4.cnt
+SELECT g1.src AS src, g1.dst AS via1, g3.src AS via2, g3.dst AS dst,
+    c1.cnt AS cnt1, c2.cnt AS cnt2, c3.cnt AS cnt3, c4.cnt AS cnt4
+FROM Graph AS g1, Graph AS g2, Graph AS g3,
+    (SELECT src, COUNT(*) AS cnt FROM Graph GROUP BY src) AS c1,
+    (SELECT src, COUNT(*) AS cnt FROM Graph GROUP BY src) AS c2,
+    (SELECT src, COUNT(*) AS cnt FROM Graph GROUP BY src) AS c3,
+    (SELECT dst, COUNT(*) AS cnt FROM Graph GROUP BY dst) AS c4
+WHERE g1.dst = g2.src AND g2.dst = g3.src
+    AND c1.src = g1.src AND c2.src = g3.dst
+    AND c3.src = g2.src AND c4.dst = g3.dst
+    AND c1.cnt < c2.cnt AND c3.cnt < c4.cnt

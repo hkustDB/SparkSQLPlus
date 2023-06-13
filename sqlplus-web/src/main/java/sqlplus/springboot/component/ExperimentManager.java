@@ -101,6 +101,12 @@ public class ExperimentManager {
                             if (pendingExperiments.isEmpty()) {
                                 experimentState = this.experimentState.finish();
                             }
+                        } else if (optDriverState.get().equalsIgnoreCase("FAILED")) {
+                            experimentTaskFail(runningExperimentName.get());
+                            cleanRunningExperimentInfo();
+                            if (pendingExperiments.isEmpty()) {
+                                experimentState = this.experimentState.finish();
+                            }
                         } else if (optDriverState.get().equalsIgnoreCase("RUNNING")) {
                             long duration = System.currentTimeMillis() - runningExperimentSubmitTimestamp;
                             // check whether it has exceeded the time limit
@@ -180,6 +186,12 @@ public class ExperimentManager {
                             pendingExperiments.clear();
                             experimentState = this.experimentState.terminate();
                         } else if (optDriverState.get().equalsIgnoreCase("KILLED")) {
+                            experimentTaskFail(runningExperimentName.get());
+                            cleanRunningExperimentInfo();
+                            pendingExperiments.forEach(this::experimentTaskCancel);
+                            pendingExperiments.clear();
+                            experimentState = this.experimentState.terminate();
+                        } else if (optDriverState.get().equalsIgnoreCase("FAILED")) {
                             experimentTaskFail(runningExperimentName.get());
                             cleanRunningExperimentInfo();
                             pendingExperiments.forEach(this::experimentTaskCancel);

@@ -9,7 +9,7 @@ sqlplus:
 
 experiment:
   mode: local
-  forwarding: true
+  forwarding: false
   spark:
     master:
       host: localhost
@@ -30,9 +30,9 @@ experiment:
   hdfs:
     host: localhost
     post: 50070
-    path: hdfs:///Users/sqlplus
+    path: /Users/sqlplus
     user: sqlplus
   data:
-    path: hdfs:///Users/sqlplus/data
+    path: /Users/sqlplus/data
   result:
     type: web-ui
