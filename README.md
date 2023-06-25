@@ -88,6 +88,14 @@ experiment:
 
 #### Spark configurations
 * Edit `$SPARK_HOME/conf/spark-defaults.conf` and add `spark.master.rest.enabled true` to the end.
+* Edit `$SPARK_HOME/conf/log4j.properties` and add the following configurations.
+```properties
+log4j.logger.SparkSQLPlusExperiment=INFO, SparkSQLPlus
+log4j.appender.SparkSQLPlus=org.apache.log4j.ConsoleAppender
+log4j.appender.SparkSQLPlus.target=System.out
+log4j.appender.SparkSQLPlus.layout=org.apache.log4j.PatternLayout
+log4j.appender.SparkSQLPlus.layout.ConversionPattern=%d{yy/MM/dd HH:mm:ss} %p %c{1}: %m%n
+```
 
 ### Build
 Run `mvn clean package`.
