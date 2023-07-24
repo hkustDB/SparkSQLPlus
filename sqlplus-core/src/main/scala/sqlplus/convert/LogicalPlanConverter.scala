@@ -1,18 +1,17 @@
 package sqlplus.convert
 
 import org.apache.calcite.rel.RelNode
-import org.apache.calcite.rel.logical.{LogicalAggregate, LogicalFilter, LogicalJoin, LogicalProject, LogicalTableScan}
+import org.apache.calcite.rel.logical._
 import org.apache.calcite.rex.{RexCall, RexInputRef, RexLiteral, RexNode}
 import org.apache.calcite.util.NlsString
-import sqlplus.expression.{DoubleLiteralExpression, DoublePlusDoubleExpression, DoubleTimesDoubleExpression, Expression, IntLiteralExpression, IntPlusIntExpression, IntTimesIntExpression, IntervalLiteralExpression, LongPlusLongExpression, LongTimesLongExpression, SingleVariableExpression, StringLiteralExpression, TimestampPlusIntervalExpression, Variable, VariableManager}
+import sqlplus.expression._
 import sqlplus.ghd.GhdAlgorithm
-import sqlplus.graph.{AggregatedRelation, Comparison, ComparisonHyperGraph, JoinTree, JoinTreeEdge, Relation, RelationalHyperGraph, TableScanRelation}
+import sqlplus.graph._
 import sqlplus.gyo.GyoAlgorithm
-import sqlplus.types.{DataType, DoubleDataType, IntDataType, IntervalDataType, LongDataType, TimestampDataType}
+import sqlplus.types._
 import sqlplus.utils.DisjointSet
 
 import scala.collection.JavaConversions._
-import scala.collection.immutable.List
 import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 
@@ -107,11 +106,11 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
             rexCall.getOperator.getName match {
                 case "=" =>
                     // we can't handle conditions like R.a = S.b + T.c
-                    val left: RexInputRef = rexCall.getOperands.get(0).asInstanceOf[RexInputRef]
-                    val right: RexInputRef = rexCall.getOperands.get(1).asInstanceOf[RexInputRef]
+                    val left: Int = extractIndexFromRexInputRef(rexCall.getOperands.get(0))
+                    val right: Int = extractIndexFromRexInputRef(rexCall.getOperands.get(1))
 
-                    val leftVariable = variableTable(left.getIndex)
-                    val rightVariable = variableTable(right.getIndex)
+                    val leftVariable = variableTable(left)
+                    val rightVariable = variableTable(right)
                     disjointSet.merge(leftVariable, rightVariable)
                 case "<" | "<=" | ">" | ">=" =>
                     conditions.append(rexCall)
@@ -283,6 +282,14 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
 
         // recreate the paths by tracing back
         trace(reachedNodes.head).reverse
+    }
+
+    def extractIndexFromRexInputRef(rexNode: RexNode): Int = {
+        rexNode match {
+            case rexInputRef: RexInputRef => rexInputRef.getIndex
+            case call: RexCall if call.op.getName == "CAST" => extractIndexFromRexInputRef(call.getOperands.get(0))
+            case _ => throw new UnsupportedOperationException(s"unsupported rexNode ${rexNode.toString}")
+        }
     }
 
     def convertRexNodeToExpression(rexNode: RexNode, variableTable: Array[Variable]): Expression = {

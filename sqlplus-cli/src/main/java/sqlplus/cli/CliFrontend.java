@@ -84,7 +84,7 @@ public class CliFrontend {
             ConvertResult convertResult = converter.convert(logicalPlan);
 
             SqlPlusCompiler sqlPlusCompiler = new SqlPlusCompiler(variableManager);
-            CompileResult compileResult = sqlPlusCompiler.compile(catalogManager, convertResult);
+            CompileResult compileResult = sqlPlusCompiler.compile(catalogManager, convertResult, true);
             CodeGenerator codeGenerator = new SparkSQLPlusExampleCodeGenerator(compileResult, packageName, objectName);
             StringBuilder builder = new StringBuilder();
             codeGenerator.generate(builder);

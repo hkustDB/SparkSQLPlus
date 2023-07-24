@@ -1,81 +1,73 @@
 package sqlplus.compile
 
-import sqlplus.expression.Variable
 import sqlplus.types.DataType
 
-sealed trait ExtraColumn {
-    def getVariable(): Variable
-}
-case class CommonExtraColumn(columnVariable: Variable, joinVariables: List[Variable]) extends ExtraColumn {
-    override def getVariable(): Variable = columnVariable
-}
-case class ComparisonExtraColumn(columnVariable: Variable, joinVariables: List[Variable],
-                                 comparisonInfo: ComparisonInfo) extends ExtraColumn {
-    override def getVariable(): Variable = columnVariable
-}
+sealed trait SetupAction
+
+case class ReadSourceTableAction(variableName: String, path: String, columnIndices: List[Int], columnTypes: List[DataType]) extends SetupAction
+case class ComputeAggregatedRelationAction(variableName: String, fromVariableName: String, groupIndices: List[Int], aggregateFunction: String) extends SetupAction
+case class FunctionDefinitionAction(func: List[String]) extends SetupAction
 
 sealed trait ReduceAction
-case class CreateCommonExtraColumnAction(relationId: Int, extraColumnVariable: Variable, joinKeyIndices: List[Int], joinKeyTypes: List[DataType],
-                                         compareKeyIndex: Int, func: String, typeParameters: String) extends ReduceAction
-case class CreateTransparentCommonExtraColumnAction(relationId: Int, extraColumnVariable: Variable,
-                                                    joinKeyIndices: List[Int], joinKeyTypes: List[DataType]) extends ReduceAction
-case class CreateComparisonExtraColumnAction(relationId: Int, extraColumnVariable: Variable, joinKeyIndices: List[Int], joinKeyTypes: List[DataType],
-                                             compareKeyIndex1: Int, compareKeyIndex2: Int, func1: String,
-                                             func2: String, typeParameters: String) extends ReduceAction
-case class CreateComputationExtraColumnAction(relationId: Int, columnVariable: Variable, keyIndices: List[Int], keyTypes: List[DataType],
-                                              functionGenerator: String => String) extends ReduceAction
-case class AppendCommonExtraColumnAction(relationId: Int, extraColumnVariable: Variable,
-                                         joinKeyIndices: List[Int], joinKeyTypes: List[DataType]) extends ReduceAction
-case class AppendComparisonExtraColumnAction(relationId: Int, extraColumnVariable: Variable, joinKeyIndices: List[Int], joinKeyTypes: List[DataType],
-                                             compareKeyIndex: Int, func: String, compareTypeParameter: String) extends ReduceAction
-case class ApplySemiJoinAction(currentRelationId: Int, childRelationId: Int, joinKeyIndicesInCurrent: List[Int], joinKeyTypesInCurrent: List[DataType],
-                               joinKeyIndicesInChild: List[Int], joinKeyTypesInChild: List[DataType]) extends ReduceAction
-case class ApplySelfComparisonAction(relationId: Int, keyIndices: List[Int], keyTypes: List[DataType],
-                                     functionGenerator: String => String) extends ReduceAction
+case class KeyByAction(variableName: String, fromVariableName: String, keyIndices: List[Int], keyExtractFuncs: List[String => String], isReKey: Boolean) extends ReduceAction
 
-case class MaterializeBagRelationAction(relationId: Int, tableScanRelationNames: List[String],
+case class GroupByAction(variableName: String, fromVariableName: String) extends ReduceAction
+
+case class CreateCommonExtraColumnAction(columnVariableName: String, sortedVariableName: String, fromVariableName: String,
+                                         compareKeyIndex: Int, compareFunc: String, typeParameters: String) extends ReduceAction
+case class CreateTransparentCommonExtraColumnAction(columnVariableName: String, fromVariableName: String,
+                                                    joinKeyIndices: List[Int], joinKeyExtractFuncs: List[String => String]) extends ReduceAction
+case class CreateComparisonExtraColumnAction(columnVariableName: String, treeLikeArrayVariableName: String, fromVariableName: String,
+                                             compareKeyIndex1: Int, compareKeyIndex2: Int, compareFunc1: String,
+                                             compareFunc2: String, typeParameters: String) extends ReduceAction
+case class CreateComputationExtraColumnAction(resultVariableName: String, fromVariableName: String,
+                                              functionGenerator: String => String) extends ReduceAction
+case class AppendCommonExtraColumnAction(appendedVariableName: String, fromVariableName: String, columnVariableName: String) extends ReduceAction
+case class AppendComparisonExtraColumnAction(appendedVariableName: String, fromVariableName: String, columnVariableName: String,
+                                             compareKeyIndex: Int, compareFunc: String, typeParameters: String) extends ReduceAction
+case class ApplySemiJoinAction(variableName: String, fromVariableName: String, childVariableName: String) extends ReduceAction
+case class ApplySelfComparisonAction(variableName: String, fromVariableName: String, functionGenerator: String => String) extends ReduceAction
+
+case class MaterializeBagRelationAction(variableName: String, tableScanRelationVariableNames: String,
                                         relationCount: Int, variableCount: Int, sourceTableIndexToRelations: String, redirects: String, variableIndices: String) extends ReduceAction
 
-case class MaterializeAuxiliaryRelationAction(relationId: Int, supportingRelationId: Int, projectIndices: List[Int], projectTypes: List[DataType]) extends ReduceAction
-
-case class MaterializeAggregatedRelationAction(relationId: Int, tableName: String, groupIndices: List[Int], aggregateFunction: String) extends ReduceAction
-
-case class EndOfReductionAction(relationId: Int) extends ReduceAction
+case class MaterializeAuxiliaryRelationAction(variableName: String, supportingVariableName: String, projectIndices: List[Int]) extends ReduceAction
 
 sealed trait EnumerateAction
-case class RootPrepareEnumerationAction(relationId: Int, joinKeyIndices: List[Int], joinKeyTypes: List[DataType],
+case class RootPrepareEnumerationAction(variableName: String, fromVariableName: String,
+                                        joinKeyIndices: List[Int], joinKeyExtractFuncs: List[String => String],
                                         extractIndicesInCurrent: List[Int]) extends EnumerateAction
-case class EnumerateWithoutComparisonAction(relationId: Int, joinKeyIndicesInCurrent: List[Int], joinKeyTypesInCurrent: List[DataType],
+case class EnumerateWithoutComparisonAction(newVariableName: String, currentVariableName: String, intermediateResultVariableName: String,
                                             extractIndicesInCurrent: List[Int],
                                             extractIndicesInIntermediateResult: List[Int],
-                                            optResultKeyIsInIntermediateResultAndIndicesTypes: Option[List[(Boolean, Int, DataType)]]
+                                            resultKeySelectors: List[(String, String) => String]
                                            ) extends EnumerateAction
-case class EnumerateWithOneComparisonAction(relationId: Int, joinKeyIndicesInCurrent: List[Int], joinKeyTypesInCurrent: List[DataType],
+case class EnumerateWithOneComparisonAction(newVariableName: String, currentVariableName: String, intermediateResultVariableName: String,
                                             compareKeyIndexInCurrent: Int, compareKeyIndexInIntermediateResult: Int,
-                                            func: String, extractIndicesInCurrent: List[Int],
+                                            compareFunc: String,
+                                            extractIndicesInCurrent: List[Int],
                                             extractIndicesInIntermediateResult: List[Int],
-                                            optResultKeyIsInIntermediateResultAndIndicesTypes: Option[List[(Boolean, Int, DataType)]],
+                                            resultKeySelectors: List[(String, String) => String],
                                             typeParameters: String
                                            ) extends EnumerateAction
-case class EnumerateWithTwoComparisonsAction(relationId: Int, joinKeyIndicesInCurrent: List[Int], joinKeyTypesInCurrent: List[DataType],
+case class EnumerateWithTwoComparisonsAction(newVariableName: String, currentVariableName: String, intermediateResultVariableName: String,
                                              compareKeyIndexInIntermediateResult1: Int,
                                              compareKeyIndexInIntermediateResult2: Int,
                                              extractIndicesInCurrent: List[Int],
                                              extractIndicesInIntermediateResult: List[Int],
-                                             optResultKeyIsInIntermediateResultAndIndicesTypes: Option[List[(Boolean, Int, DataType)]],
-                                             compareAndResultTypeParameters: String
+                                             resultKeySelectors: List[(String, String) => String],
+                                             typeParameters: String
                                             ) extends EnumerateAction
 
-case class EnumerateWithMoreThanTwoComparisonsAction(relationId: Int, joinKeyIndicesInCurrent: List[Int], joinKeyTypesInCurrent: List[DataType],
-                                                     compareKeyIndexInCurrent: Int, compareKeyIndexInIntermediateResult: Int,
-                                                     func: String, extraFilters: List[String],
+case class EnumerateWithMoreThanTwoComparisonsAction(newVariableName: String, currentVariableName: String, intermediateResultVariableName: String,
+                                                     compareKeyIndexInCurrent: Int,
+                                                     compareKeyIndexInIntermediateResult: Int,
+                                                     compareFunc: String, extraFilters: List[String],
                                                      extractIndicesInCurrent: List[Int],
                                                      extractIndicesInIntermediateResult: List[Int],
-                                                     optResultKeyIsInIntermediateResultAndIndicesTypes: Option[List[(Boolean, Int, DataType)]],
+                                                     resultKeySelectors: List[(String, String) => String],
                                                      typeParameters: String
                                                     ) extends EnumerateAction
 
-sealed trait FinalAction
-
-case class FormatResultAction(formatters: List[String => String]) extends FinalAction
-case object CountResultAction extends FinalAction
+case class FormatResultAction(variableName: String, intermediateResultVariableName: String, formatters: List[String => String]) extends EnumerateAction
+case class CountResultAction(intermediateResultVariableName: String) extends EnumerateAction

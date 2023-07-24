@@ -13,7 +13,7 @@ abstract class AbstractSparkSQLCodeGenerator(tables: List[SqlPlusTable], sql: St
 
     def getQueryName: String
 
-    def getSourceTablePath(table: SqlPlusTable): String
+    def getSourceTablePath(path: String): String
 
     override def getType: String = "object"
 
@@ -66,6 +66,7 @@ abstract class AbstractSparkSQLCodeGenerator(tables: List[SqlPlusTable], sql: St
             newLine(builder)
 
             val table = tables(i)
+            val path = table.getTableProperties.get("path")
             val schema = table.getTableColumns.map(col =>
                 s"${col.getName} ${if (col.getType.equalsIgnoreCase("VARCHAR")) "STRING" else col.getType.toUpperCase}").mkString(", ")
 
@@ -75,7 +76,7 @@ abstract class AbstractSparkSQLCodeGenerator(tables: List[SqlPlusTable], sql: St
             indent(builder, 3).append(".option(\"quote\", \"\")").append("\n")
             indent(builder, 3).append(".option(\"header\", \"false\")").append("\n")
             indent(builder, 3).append(s".schema(schema${i})").append("\n")
-            indent(builder, 3).append(".load(").append(getSourceTablePath(table)).append(").persist()").append("\n")
+            indent(builder, 3).append(".load(").append(getSourceTablePath(path)).append(").persist()").append("\n")
             indent(builder, 2).append(s"df${i}.count()").append("\n")
             indent(builder, 2).append(s"df${i}.createOrReplaceTempView(").append("\"").append(table.getTableName).append("\")").append("\n")
         }

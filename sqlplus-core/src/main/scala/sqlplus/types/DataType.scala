@@ -1,7 +1,7 @@
 package sqlplus.types
 
 import org.apache.calcite.sql.`type`.SqlTypeName
-import org.apache.calcite.sql.`type`.SqlTypeName.{BIGINT, DOUBLE, INTEGER, TIMESTAMP, VARCHAR}
+import org.apache.calcite.sql.`type`.SqlTypeName._
 
 
 abstract class DataType {
@@ -59,7 +59,7 @@ case object IntervalDataType extends DataType {
 object DataType {
     def fromSqlType(sqlTypeName: SqlTypeName): DataType = sqlTypeName match {
         case INTEGER => IntDataType
-        case BIGINT => LongDataType  // TODO: fix the compare in helper class, switch back to LongDataType
+        case BIGINT => LongDataType
         case VARCHAR => StringDataType
         case TIMESTAMP => TimestampDataType
         case DOUBLE => DoubleDataType
@@ -68,7 +68,7 @@ object DataType {
 
     def fromTypeName(typeName: String): DataType = typeName match {
         case "INTEGER" => IntDataType
-        case "BIGINT" => LongDataType  // TODO: fix the compare in helper class, switch back to LongDataType
+        case "BIGINT" => LongDataType
         case "VARCHAR" => StringDataType
         case "TIMESTAMP" => TimestampDataType
         case "DOUBLE" => DoubleDataType

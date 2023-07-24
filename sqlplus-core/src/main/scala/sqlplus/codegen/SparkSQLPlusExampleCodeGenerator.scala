@@ -1,11 +1,9 @@
 package sqlplus.codegen
 
 import sqlplus.compile.CompileResult
-import sqlplus.plan.table.SqlPlusTable
 
 class SparkSQLPlusExampleCodeGenerator(compileResult: CompileResult, packageName: String, objectName: String)
-    extends AbstractSparkSQLPlusCodeGenerator(compileResult.comparisonOperators, compileResult.sourceTables,
-        compileResult.relationIdToInfo, compileResult.reduceActions, compileResult.enumerateActions, compileResult.formatResultAction) {
+    extends AbstractSparkSQLPlusCodeGenerator(compileResult.setupActions, compileResult.reduceActions, compileResult.enumerateActions) {
 
     override def getAppName: String = "SparkSQLPlusExample"
 
@@ -19,6 +17,6 @@ class SparkSQLPlusExampleCodeGenerator(compileResult: CompileResult, packageName
 
     override def getName: String = objectName
 
-    override def getSourceTablePath(table: SqlPlusTable): String =
-        "\"" + table.getTableProperties.get("path") + "\""
+    override def getSourceTablePath(path: String): String =
+        "\"" + path + "\""
 }

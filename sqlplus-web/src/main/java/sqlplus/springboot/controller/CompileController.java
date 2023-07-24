@@ -1,7 +1,14 @@
 package sqlplus.springboot.controller;
 
-import scala.collection.JavaConverters.*;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.parser.SqlParseException;
 import org.apache.commons.io.FileUtils;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+import scala.Tuple2;
 import scala.Tuple3;
 import scala.collection.mutable.StringBuilder;
 import sqlplus.catalog.CatalogManager;
@@ -19,17 +26,9 @@ import sqlplus.graph.*;
 import sqlplus.parser.SqlPlusParser;
 import sqlplus.parser.ddl.SqlCreateTable;
 import sqlplus.plan.SqlPlusPlanner;
-import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.sql.SqlNode;
-import org.apache.calcite.sql.SqlNodeList;
-import org.apache.calcite.sql.parser.SqlParseException;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
-import scala.Tuple2;
 import sqlplus.plan.table.SqlPlusTable;
-import sqlplus.springboot.dto.*;
 import sqlplus.springboot.dto.HyperGraph;
+import sqlplus.springboot.dto.*;
 import sqlplus.springboot.util.CustomQueryManager;
 
 import java.io.File;
@@ -212,7 +211,7 @@ public class CompileController {
         );
 
         SqlPlusCompiler sqlPlusCompiler = new SqlPlusCompiler(variableManager);
-        compileResult = sqlPlusCompiler.compile(catalogManager, convertResult);
+        compileResult = sqlPlusCompiler.compile(catalogManager, convertResult, false);
         CodeGenerator codeGenerator = new SparkSQLPlusExampleCodeGenerator(compileResult,
                 "sqlplus.example", "SparkSQLPlusExample");
         StringBuilder builder = new StringBuilder();

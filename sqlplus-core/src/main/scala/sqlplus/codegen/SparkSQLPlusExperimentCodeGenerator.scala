@@ -1,11 +1,9 @@
 package sqlplus.codegen
 
-import sqlplus.compile.{CompileResult, CountResultAction}
-import sqlplus.plan.table.SqlPlusTable
+import sqlplus.compile.CompileResult
 
 class SparkSQLPlusExperimentCodeGenerator(compileResult: CompileResult, classname: String, queryName: String, shortQueryName: String)
-    extends AbstractSparkSQLPlusCodeGenerator(compileResult.comparisonOperators, compileResult.sourceTables,
-        compileResult.relationIdToInfo, compileResult.reduceActions, compileResult.enumerateActions, CountResultAction) {
+    extends AbstractSparkSQLPlusCodeGenerator(compileResult.setupActions, compileResult.reduceActions, compileResult.enumerateActions) {
 
     override def getAppName: String = classname
 
@@ -22,9 +20,8 @@ class SparkSQLPlusExperimentCodeGenerator(compileResult: CompileResult, classnam
     override def getImports: List[String] =
         super.getImports :+ "org.slf4j.LoggerFactory"
 
-    override def getSourceTablePath(table: SqlPlusTable): String = {
-        val pathInDdl = table.getTableProperties.get("path")
-        val fileName = if (pathInDdl.contains("/")) pathInDdl.substring(pathInDdl.lastIndexOf("/") + 1) else pathInDdl
+    override def getSourceTablePath(path: String): String = {
+        val fileName = if (path.contains("/")) path.substring(path.lastIndexOf("/") + 1) else path
         "s\"${args.head}/" + fileName + "\""
     }
 }

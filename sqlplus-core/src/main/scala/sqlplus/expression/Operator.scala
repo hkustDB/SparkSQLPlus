@@ -1,6 +1,6 @@
 package sqlplus.expression
 
-import sqlplus.types.{DataType, DoubleDataType, IntDataType, LongDataType, StringDataType, TimestampDataType}
+import sqlplus.types.{DataType, DataTypeCasting, DoubleDataType, IntDataType, LongDataType, StringDataType, TimestampDataType}
 
 import scala.reflect.runtime.universe.{TypeTag, typeOf}
 
@@ -51,42 +51,34 @@ object Operator {
     }
 
     private def selectNumericLessThanImplementation(leftType: DataType, rightType: DataType): NumericLessThan[_] = {
-        if (leftType == DoubleDataType || rightType == DoubleDataType) {
-            DoubleLessThan
-        } else if (leftType == LongDataType || rightType == LongDataType) {
-            LongLessThan
-        } else {
-            IntLessThan
+        DataTypeCasting.promote(leftType, rightType) match {
+            case DoubleDataType => DoubleLessThan
+            case LongDataType => LongLessThan
+            case IntDataType => IntLessThan
         }
     }
 
     private def selectNumericLessThanOrEqualToImplementation(leftType: DataType, rightType: DataType): NumericLessThanOrEqualTo[_] = {
-        if (leftType == DoubleDataType || rightType == DoubleDataType) {
-            DoubleLessThanOrEqualTo
-        } else if (leftType == LongDataType || rightType == LongDataType) {
-            LongLessThanOrEqualTo
-        } else {
-            IntLessThanOrEqualTo
+        DataTypeCasting.promote(leftType, rightType) match {
+            case DoubleDataType => DoubleLessThanOrEqualTo
+            case LongDataType => LongLessThanOrEqualTo
+            case IntDataType => IntLessThanOrEqualTo
         }
     }
 
     private def selectNumericGreaterThanImplementation(leftType: DataType, rightType: DataType): NumericGreaterThan[_] = {
-        if (leftType == DoubleDataType || rightType == DoubleDataType) {
-            DoubleGreaterThan
-        } else if (leftType == LongDataType || rightType == LongDataType) {
-            LongGreaterThan
-        } else {
-            IntGreaterThan
+        DataTypeCasting.promote(leftType, rightType) match {
+            case DoubleDataType => DoubleGreaterThan
+            case LongDataType => LongGreaterThan
+            case IntDataType => IntGreaterThan
         }
     }
 
     private def selectNumericGreaterThanOrEqualToImplementation(leftType: DataType, rightType: DataType): NumericGreaterThanOrEqualTo[_] = {
-        if (leftType == DoubleDataType || rightType == DoubleDataType) {
-            DoubleGreaterThanOrEqualTo
-        } else if (leftType == LongDataType || rightType == LongDataType) {
-            LongGreaterThanOrEqualTo
-        } else {
-            IntGreaterThanOrEqualTo
+        DataTypeCasting.promote(leftType, rightType) match {
+            case DoubleDataType => DoubleGreaterThanOrEqualTo
+            case LongDataType => LongGreaterThanOrEqualTo
+            case IntDataType => IntGreaterThanOrEqualTo
         }
     }
 }

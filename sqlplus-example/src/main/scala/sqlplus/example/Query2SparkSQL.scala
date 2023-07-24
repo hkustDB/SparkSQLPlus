@@ -1,8 +1,7 @@
 package sqlplus.example
 
-import org.apache.spark.sql.types.{IntegerType, StructField, StructType}
-import org.apache.spark.sql.{Row, SparkSession}
-import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.SparkConf
 import org.slf4j.LoggerFactory
 
 object Query2SparkSQL {

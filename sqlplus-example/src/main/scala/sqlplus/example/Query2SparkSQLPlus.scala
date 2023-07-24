@@ -1,9 +1,9 @@
 package sqlplus.example
 
-import sqlplus.helper.ImplicitConversions._
+import org.apache.spark.SparkConf
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.{SparkConf, SparkContext}
 import org.slf4j.LoggerFactory
+import sqlplus.helper.ImplicitConversions._
 
 object Query2SparkSQLPlus {
 	val LOGGER = LoggerFactory.getLogger("SparkSQLPlusExperiment")
@@ -13,46 +13,43 @@ object Query2SparkSQLPlus {
 		conf.setAppName("Query2SparkSQLPlus")
 		val spark = SparkSession.builder.config(conf).getOrCreate()
 
-		val intLessThan = (x: Int, y: Int) => x < y
-
-		val v1 = spark.sparkContext.textFile(s"${args.head}/graph.dat").map(line => {
-			val fields = line.split(",")
-			Array[Any](fields(0).toInt, fields(1).toInt)
+		val v1 = spark.sparkContext.textFile(s"${args.head}/graph.dat").map(row => {
+			val f = row.split(",")
+			Array[Any](f(0).toInt, f(1).toInt)
 		}).persist()
 		v1.count()
+		val intLessThan = (x: Int, y: Int) => x < y
 
-		val v2 = v1.map(arr => arr.map(x => x.asInstanceOf[Int])).cache()
-		v2.count()
-		val v3 = spark.sparkContext.lftj(Array(v2), 3, 3,
+		val v2 = spark.sparkContext.lftj(Array(v1.map(a => a.map(i => i.asInstanceOf[Int]))), 3, 3,
 			Array(Array(0, 1, 2)),
 			Array(Array((0, 1), (1, 2)), Array((0, 2), (1, 0)), Array((0, 0), (1, 1))),
 			Array(Array(0, 1), Array(1, 0), Array(0, 1))).cache()
-		val v4 = v3.keyBy(x => x(1).asInstanceOf[Int])
-		val v5 = v4.appendExtraColumn(x => ((x(1).asInstanceOf[Int] + x(2).asInstanceOf[Int]).asInstanceOf[Int] + x(0).asInstanceOf[Int]))
-		val v6 = v5.groupBy()
-		val v7 = v6.sortValuesWith[Int, Int, Int, Int](3, (x: Int, y: Int) => intLessThan(y, x)).persist()
-		val v8 = v7.extractFieldInHeadElement(3)
-		val v9 = spark.sparkContext.lftj(Array(v2), 3, 3,
+		val v3 = v2.keyBy(x => x(1).asInstanceOf[Int])
+		val v4 = v3.appendExtraColumn(x => ((x(1).asInstanceOf[Int] + x(2).asInstanceOf[Int]).asInstanceOf[Int] + x(0).asInstanceOf[Int]))
+		val v5 = v4.groupBy()
+		val v6 = v5.sortValuesWith[Int, Int, Int, Int](3, (x: Int, y: Int) => intLessThan(y, x)).persist()
+		val v7 = v6.extractFieldInHeadElement(3)
+		val v8 = spark.sparkContext.lftj(Array(v1.map(a => a.map(i => i.asInstanceOf[Int]))), 3, 3,
 			Array(Array(0, 1, 2)),
 			Array(Array((0, 2), (1, 0)), Array((0, 0), (1, 1)), Array((0, 1), (1, 2))),
 			Array(Array(1, 0), Array(0, 1), Array(0, 1))).cache()
-		val v10 = v9.keyBy(x => x(0).asInstanceOf[Int])
-		val v11 = v10.appendExtraColumn(x => ((x(2).asInstanceOf[Int] + x(0).asInstanceOf[Int]).asInstanceOf[Int] + x(1).asInstanceOf[Int]))
-		val v12 = v11.groupBy()
-		val v13 = v12.sortValuesWith[Int, Int, Int, Int](3, (x: Int, y: Int) => intLessThan(x, y)).persist()
-		val v14 = v13.extractFieldInHeadElement(3)
-		val v15 = v1.keyBy(x => x(1).asInstanceOf[Int])
-		val v16 = v15.appendExtraColumn(v8)
-		val v17 = v16.reKeyBy(x => x(0).asInstanceOf[Int])
-		val v18 = v17.appendExtraColumn(v14)
-		val v19 = v18.filter(x => intLessThan(x._2(3).asInstanceOf[Int], x._2(2).asInstanceOf[Int]))
+		val v9 = v8.keyBy(x => x(0).asInstanceOf[Int])
+		val v10 = v9.appendExtraColumn(x => ((x(2).asInstanceOf[Int] + x(0).asInstanceOf[Int]).asInstanceOf[Int] + x(1).asInstanceOf[Int]))
+		val v11 = v10.groupBy()
+		val v12 = v11.sortValuesWith[Int, Int, Int, Int](3, (x: Int, y: Int) => intLessThan(x, y)).persist()
+		val v13 = v12.extractFieldInHeadElement(3)
+		val v14 = v1.keyBy(x => x(1).asInstanceOf[Int])
+		val v15 = v14.appendExtraColumn(v7)
+		val v16 = v15.reKeyBy(x => x(0).asInstanceOf[Int])
+		val v17 = v16.appendExtraColumn(v13)
+		val v18 = v17.filter(x => intLessThan(x._2(3).asInstanceOf[Int], x._2(2).asInstanceOf[Int]))
 
-		val v20 = v19.map(t => (t._2(0).asInstanceOf[Int], Array(t._2(1), t._2(2))))
-		val v21 = v20.enumerateWithOneComparison[Int, Int, Int, Int, Int](v13, 1, 3, (x: Int, y: Int) => intLessThan(y, x), Array(), Array(0, 1, 2, 3), (l, r) => (l(0).asInstanceOf[Int]))
-		val v22 = v21.enumerateWithOneComparison[Int, Int, Int, Int, Int](v7, 3, 3, (x: Int, y: Int) => intLessThan(x, y), Array(0, 1, 2), Array(0, 1, 2))
+		val v19 = v18.map(t => (t._2(0).asInstanceOf[Int], Array(t._2(1), t._2(2))))
+		val v20 = v19.enumerateWithOneComparison[Int, Int, Int, Int, Int](v12, 1, 3, (x: Int, y: Int) => intLessThan(y, x), Array(), Array(0, 1, 2, 3), (l, r) => (l(0).asInstanceOf[Int]))
+		val v21 = v20.enumerateWithOneComparison[Int, Int, Int, Int, Int](v6, 3, 3, (x: Int, y: Int) => intLessThan(x, y), Array(0, 1, 2), Array(0, 1, 2))
 
 		val ts1 = System.currentTimeMillis()
-		val cnt = v22.count()
+		val cnt = v21.count()
 		val ts2 = System.currentTimeMillis()
 		LOGGER.info("Query2-SparkSQLPlus cnt: " + cnt)
 		LOGGER.info("Query2-SparkSQLPlus time: " + (ts2 - ts1) / 1000f)

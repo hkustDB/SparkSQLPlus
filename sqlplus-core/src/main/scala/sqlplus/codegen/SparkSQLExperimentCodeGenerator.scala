@@ -12,9 +12,8 @@ class SparkSQLExperimentCodeGenerator(tables: List[SqlPlusTable], sql: String, c
 
     override def getQueryName: String = queryName
 
-    override def getSourceTablePath(table: SqlPlusTable): String = {
-        val pathInDdl = table.getTableProperties.get("path")
-        val fileName = if (pathInDdl.contains("/")) pathInDdl.substring(pathInDdl.lastIndexOf("/") + 1) else pathInDdl
+    override def getSourceTablePath(path: String): String = {
+        val fileName = if (path.contains("/")) path.substring(path.lastIndexOf("/") + 1) else path
         "s\"${args.head}/" + fileName + "\""
     }
 
