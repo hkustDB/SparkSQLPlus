@@ -1,34 +1,36 @@
 package sqlplus.gyo
 
 import sqlplus.expression.Variable
-import sqlplus.ghd.GhdAlgorithm
-import sqlplus.{graph, gyo}
-import sqlplus.graph.{AuxiliaryRelation, JoinTree, JoinTreeEdge, Relation, RelationalHyperGraph}
+import sqlplus.graph._
+import sqlplus.gyo
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
+/**
+ * This algorithm is modeled as a BFS search of valid states. A state contains a forest and the remaining hyperGraph.
+ */
 class GyoAlgorithm {
-    /**
-     *
-     * @param hyperGraph
-     * @param outputVariables
-     * @return
-     */
     def run(hyperGraph: RelationalHyperGraph, outputVariables: Set[Variable]): Option[GyoResult] = {
         val initState = new GyoState(hyperGraph, Forest.create(hyperGraph))
 
+        // attach the tree represented by $child to the tree represented by $parent
+        // $child will be removed in hyperGraph
         def attach(parent: Relation, child: Relation, graph: RelationalHyperGraph, forest: Forest): GyoState = {
             val xTreeNode = forest.getTree(parent)
             val yTreeNode = forest.getTree(child)
 
+            // reduce the unnecessary AuxiliaryRelations here
             if (child.isInstanceOf[AuxiliaryRelation] && child.getNodes().subsetOf(parent.getNodes())) {
+                // there is no need to attach an AuxiliaryRelation to a parent that contains all its variables
+                // e.g., R(A,B,C) -> [B,C] -> S(B,C,D) = R(A,B,C) -> S(B,C,D)
                 assert(yTreeNode.getChildren().nonEmpty)
                 val newTreeNode = xTreeNode.attachAll(yTreeNode.getChildren())
                 val newForest = forest.removeTree(xTreeNode).removeTree(yTreeNode).addTree(newTreeNode)
                 val newGraph = graph.removeHyperEdge(child)
                 new GyoState(newGraph, newForest)
             } else {
+                // general cases
                 val newTreeNode = xTreeNode.attach(yTreeNode)
                 val newForest = forest.removeTree(xTreeNode).removeTree(yTreeNode).addTree(newTreeNode)
                 val newGraph = graph.removeHyperEdge(child)
@@ -36,6 +38,8 @@ class GyoAlgorithm {
             }
         }
 
+        // for hyperGraph: replace $originalRelation with $newRelation
+        // for forest: create a new tree node for $newRelation and attach the original tree node to it
         def replace(newRelation: Relation, originalRelation: Relation, graph: RelationalHyperGraph, forest: Forest): GyoState = {
             val xTreeNode = gyo.LeafTreeNode(newRelation)
             val yTreeNode = forest.getTree(originalRelation)
@@ -45,50 +49,49 @@ class GyoAlgorithm {
             new GyoState(newGraph, newForest)
         }
 
-        def nextStates(gyoState: GyoState): Option[List[GyoState]] = {
+        // compute the reachable valid states in phase 1
+        def phase1NextStates(gyoState: GyoState): Option[List[GyoState]] = {
             // reduce relations without output variables
-            val remaining = gyoState.getRelationalHyperGraph.getEdges()
-            val nonOutput = remaining.filter(r => r.getNodes().intersect(outputVariables).isEmpty)
+            val remainingRelations = gyoState.getRelationalHyperGraph.getEdges()
+            val nonOutputRelations = remainingRelations.filter(r => r.getNodes().intersect(outputVariables).isEmpty)
 
-            val list = ListBuffer.empty[(Relation, Relation)]
-            val list2 = ListBuffer.empty[(Relation, Set[Variable])]
+            val reductions = ListBuffer.empty[(Relation, Relation)]
+            val removes = ListBuffer.empty[(Relation, Set[Variable])]
             for {
-                x <- nonOutput
-                y <- remaining
+                x <- nonOutputRelations
+                y <- remainingRelations
                 if x != y && x.getNodes().intersect(y.getNodes()).nonEmpty
             } {
-                if (x.getNodes().subsetOf(y.getNodes()))
-                    list.append((x, y))
-                else {
+                if (x.getNodes().subsetOf(y.getNodes())) {
+                    reductions.append((x, y))       // reduce x to y
+                } else {
                     val diff = x.getNodes() -- y.getNodes()
-                    if (diff.forall(v => remaining.forall(r => r == x || !r.getNodes().contains(v)))) {
+                    if (diff.forall(v => remainingRelations.forall(r => r == x || !r.getNodes().contains(v)))) {
                         // variables in diff belong to x only
-                        list2.append((x, diff))
+                        // create AuxiliaryRelation with variables x.getNodes() - diff
+                        removes.append((x, diff))
                     }
                 }
             }
 
-            val output = remaining.filter(r => r.getNodes().intersect(outputVariables).nonEmpty)
-            val list3 = ListBuffer.empty[(Relation, Set[Variable])]
-            output.foreach(r => {
-                val variables = r.getNodes()
-                // nonOutput variables that belongs to r only
-                val removable = variables.filter(v => !outputVariables.contains(v) && remaining.forall(p => p == r || !p.getNodes().contains(v)))
-                if (removable.nonEmpty) {
-                    list3.append((r, removable))
-                }
-            })
+            if (reductions.isEmpty && removes.isEmpty) {
+                // try to find some non-output variables that belongs to one relation
+                val outputRelations = remainingRelations.filter(r => r.getNodes().intersect(outputVariables).nonEmpty)
+                outputRelations.foreach(r => {
+                    val variables = r.getNodes()
+                    // nonOutput variables that belongs to r only
+                    val removable = variables.filter(v => !outputVariables.contains(v) && remainingRelations.forall(p => p == r || !p.getNodes().contains(v)))
+                    if (removable.nonEmpty) {
+                        removes.append((r, removable))
+                    }
+                })
+            }
 
-            if (list.nonEmpty) {
-                // some nonOutput relations are subset of another relation
-                Some(list.toList.map(p => attach(p._2, p._1, gyoState.getRelationalHyperGraph, gyoState.getForest)))
-            } else if (list2.nonEmpty) {
-                Some(list2.toList.map(p => {
-                    val newRelation = p._1.removeVariables(p._2)
-                    replace(newRelation, p._1, gyoState.getRelationalHyperGraph, gyoState.getForest)
-                }))
-            } else if (list3.nonEmpty) {
-                Some(list3.toList.map(p => {
+            if (reductions.nonEmpty) {
+                // perform reduction first if we have relations like R(A,B,C) and S(B,C)
+                Some(reductions.toList.map(p => attach(p._2, p._1, gyoState.getRelationalHyperGraph, gyoState.getForest)))
+            } else if (removes.nonEmpty) {
+                Some(removes.toList.map(p => {
                     val newRelation = p._1.removeVariables(p._2)
                     replace(newRelation, p._1, gyoState.getRelationalHyperGraph, gyoState.getForest)
                 }))
@@ -97,13 +100,12 @@ class GyoAlgorithm {
             }
         }
 
-        // get next state in step 2
-        def nextStates2(stateAndSubset: (GyoState, Set[Relation])): Option[List[(GyoState, Set[Relation])]] = {
+        def phase2NextStates(stateAndSubset: (GyoState, Set[Relation])): Option[List[(GyoState, Set[Relation])]] = {
             val gyoState = stateAndSubset._1
             val subset = stateAndSubset._2
             val remaining = gyoState.getRelationalHyperGraph.getEdges()
-            val list = ListBuffer.empty[(Relation, Relation)]
-            val list2 = ListBuffer.empty[(Relation, Set[Variable])]
+            val reductions = ListBuffer.empty[(Relation, Relation)]
+            val removes = ListBuffer.empty[(Relation, Set[Variable])]
 
             for {
                 x <- remaining
@@ -111,20 +113,19 @@ class GyoAlgorithm {
                 if x != y && x.getNodes().intersect(y.getNodes()).nonEmpty
             } {
                 if (x.getNodes().subsetOf(y.getNodes()))
-                    list.append((x, y))
+                    reductions.append((x, y))
                 else {
                     val diff = x.getNodes() -- y.getNodes()
                     if (diff.forall(v => remaining.forall(r => r == x || !r.getNodes().contains(v)))) {
-                        // variables in diff belong to x only
-                        list2.append((x, diff))
+                        removes.append((x, diff))
                     }
                 }
             }
 
-            if (list.nonEmpty) {
-                Some(list.toList.map(p => attach(p._2, p._1, gyoState.getRelationalHyperGraph, gyoState.getForest)).map(s => (s, subset)))
-            } else if (list2.nonEmpty) {
-                Some(list2.toList.map(p => {
+            if (reductions.nonEmpty) {
+                Some(reductions.toList.map(p => attach(p._2, p._1, gyoState.getRelationalHyperGraph, gyoState.getForest)).map(s => (s, subset)))
+            } else if (removes.nonEmpty) {
+                Some(removes.toList.map(p => {
                     val newRelation = p._1.removeVariables(p._2)
                     replace(newRelation, p._1, gyoState.getRelationalHyperGraph, gyoState.getForest)
                 }).map(s => (s, subset)))
@@ -133,44 +134,50 @@ class GyoAlgorithm {
             }
         }
 
-        // step 1
-        val seenState = mutable.HashSet.empty[GyoState]
-        val queue = mutable.Queue.empty[GyoState]
-        val stableState = mutable.HashSet.empty[GyoState]
-        queue.enqueue(initState)
-        while (queue.nonEmpty) {
-            val head = queue.dequeue()
-            val next = nextStates(head)
+        // phase 1
+        val seenStates = mutable.HashSet.empty[GyoState]
+        val queue1 = mutable.Queue.empty[GyoState]
+        val stableStates = mutable.HashSet.empty[GyoState]
+        queue1.enqueue(initState)
+        while (queue1.nonEmpty) {
+            val head = queue1.dequeue()
+            val next = phase1NextStates(head)
             if (next.nonEmpty) {
                 val list = next.get
                 list.foreach(p => {
-                    if (!seenState.contains(p)) {
-                        seenState.add(p)
-                        queue.enqueue(p)
+                    if (!seenStates.contains(p)) {
+                        seenStates.add(p)
+                        queue1.enqueue(p)
                     }
                 })
             } else {
-                stableState.add(head)
+                // a state is stable if we cannot find any next state from it
+                stableStates.add(head)
             }
         }
 
-        if (stableState.isEmpty || stableState.forall(s => s.getRelationalHyperGraph.getEdges().exists(r => r.getNodes().exists(v => !outputVariables.contains(v))))) {
+        // terminate if
+        // 1. we cannot find any stable state, or
+        // 2. there is some non-output variables in stable state. e.g., R(A,B) x S(B,C), output = [A,C].
+        if (stableStates.isEmpty ||
+            stableStates.forall(s => s.getRelationalHyperGraph.getEdges().exists(r => r.getNodes().exists(v => !outputVariables.contains(v))))) {
             return None
         }
 
-        // step 2
+        // phase 2
         val finalStates = mutable.HashSet.empty[(GyoState, Set[Relation])]
-        val seenState2 = mutable.HashSet.empty[GyoState]
         val queue2 = mutable.Queue.empty[(GyoState, Set[Relation])]
-        stableState.foreach(ss => queue2.enqueue((ss, ss.getRelationalHyperGraph.getEdges())))
+        seenStates.clear()
+        // search final states from stable states
+        stableStates.foreach(state => queue2.enqueue((state, state.getRelationalHyperGraph.getEdges())))
         while (queue2.nonEmpty) {
             val head = queue2.dequeue()
-            val next = nextStates2(head)
+            val next = phase2NextStates(head)
             if (next.nonEmpty) {
                 val list = next.get
                 list.foreach(p => {
-                    if (!seenState2.contains(p._1)) {
-                        seenState2.add(p._1)
+                    if (!seenStates.contains(p._1)) {
+                        seenStates.add(p._1)
                         queue2.enqueue(p)
                     }
                 })
@@ -179,15 +186,21 @@ class GyoAlgorithm {
             }
         }
 
+        // in final state, there should be only one relation in hyperGraph
         if (finalStates.map(t => t._1).forall(fs => fs.getRelationalHyperGraph.getEdges().size == 1)) {
             val rootsAndSubset = finalStates.map(s => (s._1.getForest.getTree(s._1.getRelationalHyperGraph.getEdges().head), s._2)).toList
-            Some(GyoResult(rootsAndSubset.map(ras => convertToJoinTreeWithHyperGraph(ras._1, ras._2))))
+            Some(GyoResult(rootsAndSubset.map(ras => {
+                val (root, edges, hyperGraph) = convertToJoinTreeWithHyperGraph(ras._1)
+                val joinTree = JoinTree(root, edges, ras._2.intersect(hyperGraph.getEdges()))
+                (joinTree, hyperGraph)
+            })))
         } else {
             None
         }
     }
 
-    private def convertToJoinTreeWithHyperGraph(root: TreeNode, subset: Set[Relation]): (JoinTree, RelationalHyperGraph) = {
+    // traverse the tree nodes from the root, construct a JoinTree and RelationalHyperGraph
+    private def convertToJoinTreeWithHyperGraph(root: TreeNode): (Relation, Set[JoinTreeEdge], RelationalHyperGraph) = {
         def fun(node: TreeNode, parent: Relation): (Set[JoinTreeEdge], Set[Relation]) = {
             node match {
                 case InternalTreeNode(relation, children) =>
@@ -201,12 +214,12 @@ class GyoAlgorithm {
 
         root match {
             case LeafTreeNode(relation) =>
-                (JoinTree(relation, Set(), subset), RelationalHyperGraph.EMPTY.addHyperEdge(relation))
+                (relation, Set(), RelationalHyperGraph.EMPTY.addHyperEdge(relation))
             case InternalTreeNode(relation, children) =>
                 val childrenResult = children.map(n => fun(n, relation))
                     .foldLeft((Set.empty[JoinTreeEdge], Set.empty[Relation]))((z, r) => (z._1 ++ r._1, z._2 ++ r._2))
                 val graph = childrenResult._2.foldLeft(RelationalHyperGraph.EMPTY)((g, r) => g.addHyperEdge(r)).addHyperEdge(relation)
-                (JoinTree(relation, childrenResult._1, subset), graph)
+                (relation, childrenResult._1, graph)
         }
     }
 }

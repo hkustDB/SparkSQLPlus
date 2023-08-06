@@ -23,7 +23,6 @@ import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 class LogicalPlanConverter(val variableManager: VariableManager) {
     val gyo: GyoAlgorithm = new GyoAlgorithm
     val ghd: GhdAlgorithm = new GhdAlgorithm
-    var suffix: Int = 0
 
     def run(root: RelNode): (List[(JoinTree, ComparisonHyperGraph)], List[Variable], String) = {
         val (relations, comparisons, outputVariables, isFull) = traverseLogicalPlan(root)
