@@ -29,7 +29,7 @@ experiment:
   timeout: 300
   hdfs:
     host: localhost
-    post: 50070
+    port: 50070
     path: /Users/sqlplus
     user: sqlplus
   data:
