@@ -85,8 +85,8 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
         val logicalFilter = root.getInput(0).asInstanceOf[LogicalFilter]
         assert(logicalFilter.getCondition.isInstanceOf[RexCall])
         val condition = logicalFilter.getCondition.asInstanceOf[RexCall]
-        assert(condition.getOperator.getName == "AND")
-        val operands = condition.getOperands
+        assert(condition.getOperator.getName != "OR")
+        val operands = if (condition.getOperator.getName == "AND") condition.getOperands.toList else List(condition)
         assert(operands.stream.allMatch((operand: RexNode) => operand.isInstanceOf[RexCall]))
 
         val variableTableBuffer = new ArrayBuffer[Variable]()
