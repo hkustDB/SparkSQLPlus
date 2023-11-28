@@ -8,7 +8,7 @@ import sqlplus.types.IntDataType
 
 class GhdAlgorithmTest {
     @Test
-    def testTriangleFull(): Unit = {
+    def testDumbbellFull(): Unit = {
         val algorithm = new GhdAlgorithm
 
         val variableManager = new VariableManager
@@ -60,7 +60,7 @@ class GhdAlgorithmTest {
     }
 
     @Test
-    def testTriangleNonFull(): Unit = {
+    def testDumbbellNonFull(): Unit = {
         val algorithm = new GhdAlgorithm
 
         val variableManager = new VariableManager
@@ -110,5 +110,41 @@ class GhdAlgorithmTest {
         assertTrue(graph.getEdges().size == 3)
         assertTrue(graph.getEdges().count(r => r.isInstanceOf[TableScanRelation]) == 1)
         assertTrue(graph.getEdges().count(r => r.isInstanceOf[BagRelation]) == 2)
+    }
+
+    @Test
+    def testCyclicQuery1(): Unit = {
+        val algorithm = new GhdAlgorithm
+
+        val variableManager = new VariableManager
+        val v1 = variableManager.getNewVariable(IntDataType)
+        val v2 = variableManager.getNewVariable(IntDataType)
+        val v3 = variableManager.getNewVariable(IntDataType)
+        val v4 = variableManager.getNewVariable(IntDataType)
+        val v5 = variableManager.getNewVariable(IntDataType)
+        val v6 = variableManager.getNewVariable(IntDataType)
+        val v7 = variableManager.getNewVariable(IntDataType)
+        val v8 = variableManager.getNewVariable(IntDataType)
+        val v9 = variableManager.getNewVariable(IntDataType)
+
+        val r1 = new TableScanRelation("R1", List(v1, v2), "R1")
+        val r2 = new TableScanRelation("R2", List(v2, v3), "R2")
+        val r3 = new TableScanRelation("R3", List(v3, v4), "R3")
+        val r4 = new TableScanRelation("R4", List(v4, v5), "R4")
+        val r5 = new TableScanRelation("R5", List(v5, v6), "R5")
+        val r6 = new TableScanRelation("R6", List(v5, v7), "R6")
+        val r7 = new TableScanRelation("R7", List(v7, v8), "R7")
+        val r8 = new TableScanRelation("R8", List(v7, v9), "R8")
+
+
+        val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
+            .addHyperEdge(r4).addHyperEdge(r5).addHyperEdge(r6).addHyperEdge(r7).addHyperEdge(r8)
+
+        val result = algorithm.run(hyperGraph, Set(v3, v5))
+        assertTrue(result.joinTreeWithHyperGraphs.size == 1)
+
+        val (joinTree, graph) = result.joinTreeWithHyperGraphs.head
+        assertTrue(joinTree.subset.size == 5)
+        assertTrue(joinTree.root.isInstanceOf[BagRelation])
     }
 }
