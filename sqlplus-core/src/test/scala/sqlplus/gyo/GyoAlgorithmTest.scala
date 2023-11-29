@@ -23,7 +23,7 @@ class GyoAlgorithmTest {
 
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
 
-        val result = algorithm.run(hyperGraph, Set(v1, v2, v3, v4)).get
+        val result = algorithm.run(hyperGraph, Set(v1, v2, v3, v4), true).get
         assertTrue(result.joinTreeWithHyperGraphs.size == 3)
 
         val joinTrees = result.joinTreeWithHyperGraphs.map(t => t._1)
@@ -52,7 +52,7 @@ class GyoAlgorithmTest {
 
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
 
-        val result = algorithm.run(hyperGraph, Set(v1, v2)).get
+        val result = algorithm.run(hyperGraph, Set(v1, v2), true).get
         assertTrue(result.joinTreeWithHyperGraphs.size == 1)
 
         val joinTrees = result.joinTreeWithHyperGraphs.map(t => t._1)
@@ -81,7 +81,7 @@ class GyoAlgorithmTest {
 
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
 
-        val result = algorithm.run(hyperGraph, Set(v2, v3)).get
+        val result = algorithm.run(hyperGraph, Set(v2, v3), true).get
         assertTrue(result.joinTreeWithHyperGraphs.size == 1)
 
         val joinTrees = result.joinTreeWithHyperGraphs.map(t => t._1)
@@ -95,7 +95,7 @@ class GyoAlgorithmTest {
     }
 
     @Test
-    def testNonFreeConnex(): Unit = {
+    def testTerminateIfNonFreeConnex(): Unit = {
         val algorithm = new GyoAlgorithm
 
         val variableManager = new VariableManager
@@ -110,8 +110,39 @@ class GyoAlgorithmTest {
 
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
 
-        val result = algorithm.run(hyperGraph, Set(v1, v3, v4))
+        val result = algorithm.run(hyperGraph, Set(v1, v3, v4), true)
         assertTrue(result.isEmpty)
+    }
+
+    @Test
+    def testNonFreeConnex(): Unit = {
+        val algorithm = new GyoAlgorithm
+
+        val variableManager = new VariableManager
+        val v1 = variableManager.getNewVariable(IntDataType)
+        val v2 = variableManager.getNewVariable(IntDataType)
+        val v3 = variableManager.getNewVariable(IntDataType)
+        val v4 = variableManager.getNewVariable(IntDataType)
+        val v5 = variableManager.getNewVariable(IntDataType)
+        val v6 = variableManager.getNewVariable(IntDataType)
+
+        val r1 = new TableScanRelation("R1", List(v1, v2), "R1")
+        val r2 = new TableScanRelation("R2", List(v2, v3), "R2")
+        val r3 = new TableScanRelation("R3", List(v3, v4), "R3")
+        val r4 = new TableScanRelation("R4", List(v4, v5), "R4")
+        val r5 = new TableScanRelation("R5", List(v5, v6), "R5")
+
+        val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
+            .addHyperEdge(r4).addHyperEdge(r5)
+
+        val result = algorithm.run(hyperGraph, Set(v2, v4, v5), false).get
+        assertTrue(result.joinTreeWithHyperGraphs.size == 3)
+
+        val jointrees = result.joinTreeWithHyperGraphs.map(_._1).toSet
+        // root must be r2, r3, or r4
+        assertTrue(jointrees.count(t => t.root == r2) == 1)
+        assertTrue(jointrees.count(t => t.root == r3) == 1)
+        assertTrue(jointrees.count(t => t.root == r4) == 1)
     }
 
     @Test
@@ -122,7 +153,6 @@ class GyoAlgorithmTest {
         val v1 = variableManager.getNewVariable(IntDataType)
         val v2 = variableManager.getNewVariable(IntDataType)
         val v3 = variableManager.getNewVariable(IntDataType)
-        val v4 = variableManager.getNewVariable(IntDataType)
 
         val r1 = new TableScanRelation("R1", List(v1, v2), "R1")
         val r2 = new TableScanRelation("R2", List(v2, v3), "R2")
@@ -130,7 +160,11 @@ class GyoAlgorithmTest {
 
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
 
-        val result = algorithm.run(hyperGraph, Set(v1, v2, v3))
+        val result = algorithm.run(hyperGraph, Set(v1, v2, v3), true)
         assertTrue(result.isEmpty)
+
+        // the algorithm should terminate even if terminateIfNonFreeConnex is set to false
+        val result2 = algorithm.run(hyperGraph, Set(v1, v2, v3), false)
+        assertTrue(result2.isEmpty)
     }
 }

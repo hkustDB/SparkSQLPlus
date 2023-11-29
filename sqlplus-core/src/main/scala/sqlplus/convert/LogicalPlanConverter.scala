@@ -24,16 +24,31 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
     val gyo: GyoAlgorithm = new GyoAlgorithm
     val ghd: GhdAlgorithm = new GhdAlgorithm
 
-    def run(root: RelNode): (List[(JoinTree, ComparisonHyperGraph)], List[Variable], String) = {
-        val (relations, comparisons, outputVariables, isFull) = traverseLogicalPlan(root)
+    def run(root: RelNode): RunResult = {
+        val (relations, comparisons, outputVariables, isFull, groupByVariables, aggregations) = traverseLogicalPlan(root)
         val relationalHyperGraph = relations.foldLeft(RelationalHyperGraph.EMPTY)((g, r) => g.addHyperEdge(r))
 
-        val optGyoResult = gyo.run(relationalHyperGraph, outputVariables.toSet)
+        val optGyoResult = if (aggregations.isEmpty) {
+            // non-aggregation query, try to find a jointree with outputVariables at the top
+            // if the query is non-free-connex, terminate and use GHD instead
+            gyo.run(relationalHyperGraph, outputVariables.toSet, true)
+        } else {
+            // aggregation query, try to find a jointree with groupByVariables at the top
+            // if the query is non-free-connex but acyclic, find a jointree such that groupByVariables are closed to the root
+            // if the query is cyclic, terminate and use GHD instead
+            gyo.run(relationalHyperGraph, groupByVariables.toSet, false)
+        }
+
         val joinTreeWithHyperGraphs = if (optGyoResult.nonEmpty) {
             optGyoResult.get.joinTreeWithHyperGraphs
         } else {
-            val result = ghd.run(relationalHyperGraph, outputVariables.toSet)
-            result.joinTreeWithHyperGraphs
+            if (aggregations.isEmpty) {
+                // non-aggregation query, try to find a ghd with outputVariables at the top
+                ghd.run(relationalHyperGraph, outputVariables.toSet).joinTreeWithHyperGraphs
+            } else {
+                // aggregation query, try to find any valid ghd for full query
+                ghd.run(relationalHyperGraph, relations.flatMap(r => r.getVariableList()).toSet).joinTreeWithHyperGraphs
+            }
         }
 
         // construct a ComparisonHyperGraph for each join tree, the ComparisonHyperGraph has the minimum degree
@@ -58,7 +73,7 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
                 List.empty
         })
 
-        (joinTreesWithComparisonHyperGraph, outputVariables, isFull)
+        RunResult(joinTreesWithComparisonHyperGraph, outputVariables, isFull, groupByVariables, aggregations)
     }
 
     def candidatesWithLimit(list: List[(JoinTree, ComparisonHyperGraph)], limit: Int): List[(JoinTree, ComparisonHyperGraph)] = {
@@ -68,21 +83,34 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
     }
 
     def convert(root: RelNode): ConvertResult = {
-        val (joinTreesWithComparisonHyperGraph, outputVariables, _) = run(root)
+        val runResult = run(root)
 
         // select the joinTree and ComparisonHyperGraph with minimum degree
-        val selected = joinTreesWithComparisonHyperGraph.minBy(t => t._2.getDegree())
+        val selected = runResult.joinTreesWithComparisonHyperGraph.minBy(t => t._2.getDegree())
 
-        ConvertResult(outputVariables, selected._1, selected._2)
+        ConvertResult(selected._1, selected._2, runResult.outputVariables, runResult.groupByVariables, runResult.aggregations)
     }
 
-    def traverseLogicalPlan(root: RelNode): (List[Relation], List[(String, Expression, Expression)], List[Variable], String) = {
+    def traverseLogicalPlan(root: RelNode): (List[Relation], List[(String, Expression, Expression)], List[Variable], Boolean,
+            List[Variable], List[(String, List[Expression], Variable)]) = {
+        // root is LogicalProject even when input query is full
         assert(root.isInstanceOf[LogicalProject])
-        assert(root.getInput(0).isInstanceOf[LogicalFilter])
-        assert(root.getInput(0).getInput(0).isInstanceOf[LogicalJoin])
-
         val logicalProject = root.asInstanceOf[LogicalProject]
-        val logicalFilter = root.getInput(0).asInstanceOf[LogicalFilter]
+
+        assert(root.getInput(0).isInstanceOf[LogicalFilter] || root.getInput(0).isInstanceOf[LogicalAggregate])
+        val isAggregate = root.getInput(0).isInstanceOf[LogicalAggregate]
+
+        val logicalAggregate = if (isAggregate) root.getInput(0).asInstanceOf[LogicalAggregate] else null
+        // aggregations like SUM(g1.src * g4.dst) leads to an additional logicalProject between logicalAggregate and logicalFilter
+        val internalLogicalProject = if (logicalAggregate != null && logicalAggregate.getInput.isInstanceOf[LogicalProject]) logicalAggregate.getInput.asInstanceOf[LogicalProject] else null
+
+        val logicalFilter = if (internalLogicalProject != null)
+            internalLogicalProject.getInput.asInstanceOf[LogicalFilter]
+        else if (isAggregate)
+            logicalAggregate.getInput.asInstanceOf[LogicalFilter]
+        else
+            root.getInput(0).asInstanceOf[LogicalFilter]
+
         assert(logicalFilter.getCondition.isInstanceOf[RexCall])
         val condition = logicalFilter.getCondition.asInstanceOf[RexCall]
         assert(condition.getOperator.getName != "OR")
@@ -135,10 +163,54 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
             (op, leftExpr, rightExpr)
         })
 
-        val outputVariables = logicalProject.getProjects.toList.map(p => variableTable(p.asInstanceOf[RexInputRef].getIndex))
-        val isFull = variableTable.forall(v => outputVariables.contains(v))
+        if (isAggregate) {
+            // computations are those "intermediate" variables used in aggregate functions.
+            // e.g., for SUM(v1 * v4), we define v5 -> *(v1, v4) as a computation.
+            val computations = mutable.HashMap.empty[Variable, Expression]
+            val aggregateInputVariables = if (internalLogicalProject == null) {
+                variableTable.foreach(v => {
+                    val expr = SingleVariableExpression(v)
+                    computations(v) = expr
+                })
+                variableTable.toList
+            } else {
+                internalLogicalProject.getProjects.toList.map({
+                    case call: RexCall =>
+                        val expr = convertRexCallToExpression(call, variableTable)
+                        val variable = variableManager.getNewVariable(DataType.fromSqlType(call.getType.getSqlTypeName))
+                        computations(variable) = expr
+                        variable
+                    case inputRef: RexInputRef =>
+                        val variable = variableTable(inputRef.getIndex)
+                        computations(variable) = SingleVariableExpression(variable)
+                        variable
+                    case literal: RexLiteral =>
+                        val expr = convertRexLiteralToExpression(literal)
+                        val variable = variableManager.getNewVariable(DataType.fromSqlType(literal.getType.getSqlTypeName))
+                        computations(variable) = expr
+                        variable
+                })
+            }
 
-        (relations, comparisons, outputVariables, if (isFull) "full" else "non-full")
+            val groupByVariables = logicalAggregate.getGroupSet.asList().map(_.toInt).map(i => aggregateInputVariables(i)).toList
+            val aggregateCalls = logicalAggregate.getAggCallList.toList
+            val aggregations = aggregateCalls.map(c => {
+                val aggregateFunction = c.getAggregation.getName
+                val aggregateArguments = c.getArgList.toList.map(i => computations(aggregateInputVariables(i)))
+                (aggregateFunction, aggregateArguments, variableManager.getNewVariable(DataType.fromSqlType(c.getType.getSqlTypeName)))
+            })
+            // the output of logicalAggregate is always groupByVariables followed by aggregation columns
+            val aggregateFullResultVariables = groupByVariables ++ aggregations.map(t => t._3)
+            val outputVariables = logicalProject.getProjects.toList.map(p => aggregateFullResultVariables(p.asInstanceOf[RexInputRef].getIndex))
+            val isFull = groupByVariables.isEmpty
+
+            (relations, comparisons, outputVariables, isFull, groupByVariables, aggregations)
+        } else {
+            val outputVariables = logicalProject.getProjects.toList.map(p => variableTable(p.asInstanceOf[RexInputRef].getIndex))
+            val isFull = variableTable.forall(v => outputVariables.contains(v))
+
+            (relations, comparisons, outputVariables, isFull, List(), List())
+        }
     }
 
     private def visitLogicalRelNode(relNode: RelNode, variableTable: Array[Variable], offset: Int): List[Relation] = relNode match {

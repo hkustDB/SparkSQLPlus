@@ -76,8 +76,8 @@ public class CliFrontend {
 
             SqlNode sqlNode = SqlPlusParser.parseDml(dmlContent);
 
-            SqlPlusPlanner crownPlanner = new SqlPlusPlanner(catalogManager);
-            RelNode logicalPlan = crownPlanner.toLogicalPlan(sqlNode);
+            SqlPlusPlanner sqlPlusPlanner = new SqlPlusPlanner(catalogManager);
+            RelNode logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode);
 
             VariableManager variableManager = new VariableManager();
             LogicalPlanConverter converter = new LogicalPlanConverter(variableManager);

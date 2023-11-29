@@ -13,6 +13,9 @@ import scala.collection.mutable.ListBuffer
 
 class SqlPlusCompiler(val variableManager: VariableManager) {
     def compile(catalogManager: CatalogManager, convertResult: ConvertResult, formatResult: Boolean): CompileResult = {
+        // TODO: compilation and codegen for aggregation is unsupported yet.
+        assert(convertResult.aggregations.isEmpty)
+
         val manager = new RelationVariableNamesManager
         val assigner = new VariableNameAssigner
         val relations = convertResult.joinTree.getEdges().flatMap(e => List(e.getSrc, e.getDst)).toList

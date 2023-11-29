@@ -11,8 +11,9 @@ import scala.collection.mutable.ListBuffer
  * This algorithm is modeled as a BFS search of valid states. A state contains a forest and the remaining hyperGraph.
  */
 class GyoAlgorithm {
-    def run(hyperGraph: RelationalHyperGraph, outputVariables: Set[Variable]): Option[GyoResult] = {
+    def run(hyperGraph: RelationalHyperGraph, outputVariables: Set[Variable], terminateIfNonFreeConnex: Boolean): Option[GyoResult] = {
         val initState = new GyoState(hyperGraph, Forest.create(hyperGraph))
+        var isFreeConnex = true
 
         // attach the tree represented by $child to the tree represented by $parent
         // $child will be removed in hyperGraph
@@ -156,12 +157,15 @@ class GyoAlgorithm {
             }
         }
 
+        assert(stableStates.nonEmpty)
+
         // terminate if
-        // 1. we cannot find any stable state, or
-        // 2. there is some non-output variables in stable state. e.g., R(A,B) x S(B,C), output = [A,C].
-        if (stableStates.isEmpty ||
-            stableStates.forall(s => s.getRelationalHyperGraph.getEdges().exists(r => r.getNodes().exists(v => !outputVariables.contains(v))))) {
-            return None
+        // 1. there is some non-output variables in stable state. e.g., R(A,B) x S(B,C), output = [A,C], and
+        // 2. terminateIfNonFreeConnex is set.
+        if (stableStates.forall(s => s.getRelationalHyperGraph.getEdges().exists(r => r.getNodes().exists(v => !outputVariables.contains(v))))) {
+            isFreeConnex = false
+            if (terminateIfNonFreeConnex)
+                return None
         }
 
         // phase 2
@@ -191,7 +195,8 @@ class GyoAlgorithm {
             val rootsAndSubset = finalStates.map(s => (s._1.getForest.getTree(s._1.getRelationalHyperGraph.getEdges().head), s._2)).toList
             Some(GyoResult(rootsAndSubset.map(ras => {
                 val (root, edges, hyperGraph) = convertToJoinTreeWithHyperGraph(ras._1)
-                val joinTree = JoinTree(root, edges, ras._2.intersect(hyperGraph.getEdges()))
+                // connex-subset is empty if the input query is non-free-connex
+                val joinTree = JoinTree(root, edges, if (isFreeConnex) ras._2.intersect(hyperGraph.getEdges()) else Set())
                 (joinTree, hyperGraph)
             })))
         } else {

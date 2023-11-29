@@ -20,6 +20,8 @@ import sqlplus.compile.CompileResult;
 import sqlplus.compile.SqlPlusCompiler;
 import sqlplus.convert.ConvertResult;
 import sqlplus.convert.LogicalPlanConverter;
+import sqlplus.convert.RunResult;
+import sqlplus.expression.Expression;
 import sqlplus.expression.Variable;
 import sqlplus.expression.VariableManager;
 import sqlplus.graph.*;
@@ -39,6 +41,10 @@ import java.util.stream.Collectors;
 @RestController
 public class CompileController {
     private scala.collection.immutable.List<Variable> outputVariables = null;
+
+    private scala.collection.immutable.List<Variable> groupByVariables = null;
+
+    private scala.collection.immutable.List<Tuple3<String, scala.collection.immutable.List<Expression>, Variable>> aggregations = null;
 
     private List<Tuple2<JoinTree, ComparisonHyperGraph>> candidates = null;
 
@@ -64,22 +70,23 @@ public class CompileController {
             SqlNode sqlNode = SqlPlusParser.parseDml(request.getQuery());
             sql = request.getQuery();
 
-            SqlPlusPlanner crownPlanner = new SqlPlusPlanner(catalogManager);
-            RelNode logicalPlan = crownPlanner.toLogicalPlan(sqlNode);
+            SqlPlusPlanner sqlPlusPlanner = new SqlPlusPlanner(catalogManager);
+            RelNode logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode);
 
             variableManager = new VariableManager();
             LogicalPlanConverter converter = new LogicalPlanConverter(variableManager);
-            Tuple3<scala.collection.immutable.List<Tuple2<JoinTree, ComparisonHyperGraph>>,
-                                scala.collection.immutable.List<Variable>, String> runResult = converter.run(logicalPlan);
-            outputVariables = runResult._2();
-            isFullQuery = runResult._3().equalsIgnoreCase("full");
+            RunResult runResult = converter.run(logicalPlan);
+            outputVariables = runResult.outputVariables();
+            groupByVariables = runResult.groupByVariables();
+            aggregations = runResult.aggregations();
+            isFullQuery = runResult.isFull();
             if (!isFullQuery) {
                 // is the query is non-full, we add DISTINCT keyword to SparkSQL explicitly
                 sql = sql.replaceFirst("[s|S][e|E][l|L][e|E][c|C][t|T]", "SELECT DISTINCT");
             }
 
             candidates = scala.collection.JavaConverters.seqAsJavaList(
-                    converter.candidatesWithLimit(runResult._1(), 4));
+                    converter.candidatesWithLimit(runResult.joinTreesWithComparisonHyperGraph(), 4));
             return mkSubmitResult(candidates);
         } catch (SqlParseException e) {
             throw new RuntimeException(e);
@@ -205,9 +212,11 @@ public class CompileController {
         result.setCode(200);
 
         ConvertResult convertResult = new ConvertResult(
-                outputVariables,
                 candidates.get(request.getIndex())._1,
-                candidates.get(request.getIndex())._2
+                candidates.get(request.getIndex())._2,
+                outputVariables,
+                groupByVariables,
+                aggregations
         );
 
         SqlPlusCompiler sqlPlusCompiler = new SqlPlusCompiler(variableManager);
