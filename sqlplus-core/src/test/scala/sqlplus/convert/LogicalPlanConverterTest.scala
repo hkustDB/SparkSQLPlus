@@ -350,4 +350,47 @@ class LogicalPlanConverterTest {
         runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g3")
         runResult.joinTreesWithComparisonHyperGraph.forall(t => t._1.subset.isEmpty)
     }
+
+    @Test
+    def testFullAggregation(): Unit = {
+        val ddl =
+            """
+              |CREATE TABLE Graph (
+              |    src INT,
+              |    dst INT
+              |) WITH (
+              |    'path' = 'examples/data/graph.dat'
+              |)
+              |""".stripMargin
+        val dml =
+            """
+              |SELECT COUNT(*)
+              |FROM Graph AS g1, Graph AS g2, Graph AS g3, Graph AS g4
+              |WHERE g1.dst = g2.src AND g2.dst = g3.src AND g3.dst = g4.src AND g1.src < g4.dst
+              |""".stripMargin
+
+        val nodeList = SqlPlusParser.parseDdl(ddl)
+        val catalogManager = new CatalogManager
+        catalogManager.register(nodeList)
+        val sqlNode = SqlPlusParser.parseDml(dml)
+        val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
+        val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
+        val variableManager = new VariableManager
+        val converter = new LogicalPlanConverter(variableManager)
+        val runResult = converter.run(logicalPlan)
+
+        assertTrue(runResult.isFull)
+        assertTrue(runResult.groupByVariables.isEmpty)
+        assertTrue(runResult.aggregations.size == 1)
+        assertTrue(runResult.aggregations(0)._1 == "COUNT")
+        assertTrue(runResult.outputVariables.size == 1)
+        assertTrue(runResult.outputVariables(0) == runResult.aggregations(0)._3)
+
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 4)
+        runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g1")
+        runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g2")
+        runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g3")
+        runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g4")
+        runResult.joinTreesWithComparisonHyperGraph.forall(t => t._1.subset.isEmpty)
+    }
 }
