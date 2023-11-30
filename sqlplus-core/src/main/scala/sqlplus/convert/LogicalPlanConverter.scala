@@ -93,25 +93,38 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
 
     def traverseLogicalPlan(root: RelNode): (List[Relation], List[(String, Expression, Expression)], List[Variable], Boolean,
             List[Variable], List[(String, List[Expression], Variable)]) = {
-        // root is LogicalProject even when input query is full
-        assert(root.isInstanceOf[LogicalProject])
-        val logicalProject = root.asInstanceOf[LogicalProject]
+        // Non-aggregation:
+        // (1) LogicalProject(root) -> LogicalFilter -> LogicalJoin/LogicalAggregate/LogicalTableScan
+        // Aggregation:
+        // (1) LogicalProject(root) -> LogicalAggregate -> LogicalFilter -> LogicalJoin/LogicalAggregate/LogicalTableScan
+        // (2) LogicalProject(root) -> LogicalAggregate -> LogicalProject -> LogicalFilter -> LogicalJoin/LogicalAggregate/LogicalTableScan
+        // (3) LogicalAggregate(root) -> LogicalFilter -> LogicalJoin/LogicalAggregate/LogicalTableScan
+        // (4) LogicalAggregate(root) -> LogicalProject -> LogicalFilter -> LogicalJoin/LogicalAggregate/LogicalTableScan
+        assert(root.isInstanceOf[LogicalProject] || root.isInstanceOf[LogicalAggregate])
+        val optLogicalProject = root match {
+            case project: LogicalProject => Some(project)
+            case _ => None
+        }
 
-        assert(root.getInput(0).isInstanceOf[LogicalFilter] || root.getInput(0).isInstanceOf[LogicalAggregate])
-        val isAggregate = root.getInput(0).isInstanceOf[LogicalAggregate]
+        val optLogicalAggregate = if(optLogicalProject.nonEmpty && optLogicalProject.get.getInput.isInstanceOf[LogicalAggregate]) {
+            Some(optLogicalProject.get.getInput.asInstanceOf[LogicalAggregate])
+        } else root match {
+            case aggregate: LogicalAggregate => Some(aggregate)
+            case _ => None
+        }
 
-        val logicalAggregate = if (isAggregate) root.getInput(0).asInstanceOf[LogicalAggregate] else null
-        // aggregations like SUM(g1.src * g4.dst) leads to an additional logicalProject between logicalAggregate and logicalFilter
-        val internalLogicalProject = if (logicalAggregate != null && logicalAggregate.getInput.isInstanceOf[LogicalProject]) logicalAggregate.getInput.asInstanceOf[LogicalProject] else null
-
-        val logicalFilter = if (internalLogicalProject != null)
-            internalLogicalProject.getInput.asInstanceOf[LogicalFilter]
-        else if (isAggregate)
-            logicalAggregate.getInput.asInstanceOf[LogicalFilter]
+        val optIntermediateLogicalProject = if (optLogicalAggregate.nonEmpty && optLogicalAggregate.get.getInput.isInstanceOf[LogicalProject])
+            Some(optLogicalAggregate.get.getInput.asInstanceOf[LogicalProject])
         else
-            root.getInput(0).asInstanceOf[LogicalFilter]
+            None
 
-        assert(logicalFilter.getCondition.isInstanceOf[RexCall])
+        val logicalFilter = if (optIntermediateLogicalProject.nonEmpty)
+            optIntermediateLogicalProject.get.getInput.asInstanceOf[LogicalFilter]
+        else if (optLogicalAggregate.nonEmpty)
+            optLogicalAggregate.get.getInput.asInstanceOf[LogicalFilter]
+        else
+            optLogicalProject.get.getInput.asInstanceOf[LogicalFilter]
+
         val condition = logicalFilter.getCondition.asInstanceOf[RexCall]
         assert(condition.getOperator.getName != "OR")
         val operands = if (condition.getOperator.getName == "AND") condition.getOperands.toList else List(condition)
@@ -163,18 +176,19 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
             (op, leftExpr, rightExpr)
         })
 
-        if (isAggregate) {
+        if (optLogicalAggregate.nonEmpty) {
             // computations are those "intermediate" variables used in aggregate functions.
-            // e.g., for SUM(v1 * v4), we define v5 -> *(v1, v4) as a computation.
+            // e.g., for SUM(v1 * v4), we store v5 -> *(v1, v4) in computations.
             val computations = mutable.HashMap.empty[Variable, Expression]
-            val aggregateInputVariables = if (internalLogicalProject == null) {
+            val aggregateInputVariables = if (optIntermediateLogicalProject.isEmpty) {
+                // if no IntermediateLogicalProject, the aggregation is applied on the result of LogicalFilter
                 variableTable.foreach(v => {
                     val expr = SingleVariableExpression(v)
                     computations(v) = expr
                 })
                 variableTable.toList
             } else {
-                internalLogicalProject.getProjects.toList.map({
+                optIntermediateLogicalProject.get.getProjects.toList.map({
                     case call: RexCall =>
                         val expr = convertRexCallToExpression(call, variableTable)
                         val variable = variableManager.getNewVariable(DataType.fromSqlType(call.getType.getSqlTypeName))
@@ -192,6 +206,7 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
                 })
             }
 
+            val logicalAggregate = optLogicalAggregate.get
             val groupByVariables = logicalAggregate.getGroupSet.asList().map(_.toInt).map(i => aggregateInputVariables(i)).toList
             val aggregateCalls = logicalAggregate.getAggCallList.toList
             val aggregations = aggregateCalls.map(c => {
@@ -201,12 +216,19 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
             })
             // the output of logicalAggregate is always groupByVariables followed by aggregation columns
             val aggregateFullResultVariables = groupByVariables ++ aggregations.map(t => t._3)
-            val outputVariables = logicalProject.getProjects.toList.map(p => aggregateFullResultVariables(p.asInstanceOf[RexInputRef].getIndex))
+            val outputVariables = if (optLogicalProject.nonEmpty) {
+                optLogicalProject.get.getProjects.toList.map(p => aggregateFullResultVariables(p.asInstanceOf[RexInputRef].getIndex))
+            } else {
+                // LogicalAggregate is the root. outputVariables are exactly the same the output of LogicalAggregate.
+                aggregateFullResultVariables
+            }
+
             val isFull = groupByVariables.isEmpty
 
             (relations, comparisons, outputVariables, isFull, groupByVariables, aggregations)
         } else {
-            val outputVariables = logicalProject.getProjects.toList.map(p => variableTable(p.asInstanceOf[RexInputRef].getIndex))
+            // for non-aggregation query, root is always a LogicalProject.
+            val outputVariables = optLogicalProject.get.getProjects.toList.map(p => variableTable(p.asInstanceOf[RexInputRef].getIndex))
             val isFull = variableTable.forall(v => outputVariables.contains(v))
 
             (relations, comparisons, outputVariables, isFull, List(), List())
