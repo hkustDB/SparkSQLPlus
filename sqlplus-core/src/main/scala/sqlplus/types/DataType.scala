@@ -63,6 +63,7 @@ object DataType {
         case VARCHAR => StringDataType
         case TIMESTAMP => TimestampDataType
         case DOUBLE => DoubleDataType
+        case DECIMAL => DoubleDataType
         case _ => throw new UnsupportedOperationException(s"SqlType ${sqlTypeName.toString} is unsupported.")
     }
 
@@ -72,6 +73,7 @@ object DataType {
         case "VARCHAR" => StringDataType
         case "TIMESTAMP" => TimestampDataType
         case "DOUBLE" => DoubleDataType
+        case "DECIMAL" => DoubleDataType
         case _ => throw new UnsupportedOperationException(s"SqlType ${typeName} is unsupported.")
     }
 

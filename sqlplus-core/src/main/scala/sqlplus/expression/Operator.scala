@@ -45,6 +45,10 @@ object Operator {
                 LongGreaterThanOrEqualTo
             case "LIKE" if (left.getType() == StringDataType && left.isInstanceOf[ComputeExpression] && right.isInstanceOf[StringLiteralExpression]) =>
                 StringMatch(right.asInstanceOf[StringLiteralExpression].lit)
+            case "=" if left.isInstanceOf[LiteralExpression] && !right.isInstanceOf[LiteralExpression] =>
+                selectEqualToLiteralImplementation(right.getType(), left.asInstanceOf[LiteralExpression])
+            case "=" if right.isInstanceOf[LiteralExpression] && !left.isInstanceOf[LiteralExpression] =>
+                selectEqualToLiteralImplementation(left.getType(), right.asInstanceOf[LiteralExpression])
             case _ => throw new UnsupportedOperationException(s"Operator $op is not applicable" +
                 s" with ${left.getType()} and ${right.getType()}.")
         }
@@ -79,6 +83,15 @@ object Operator {
             case DoubleDataType => DoubleGreaterThanOrEqualTo
             case LongDataType => LongGreaterThanOrEqualTo
             case IntDataType => IntGreaterThanOrEqualTo
+        }
+    }
+
+    private def selectEqualToLiteralImplementation(dataType: DataType, lit: LiteralExpression): Operator = {
+        dataType match {
+            case IntDataType => IntEqualToLiteral(lit.getLiteral())
+            case LongDataType => LongEqualToLiteral(lit.getLiteral())
+            case DoubleDataType => DoubleEqualToLiteral(lit.getLiteral())
+            case StringDataType => StringEqualToLiteral(lit.getLiteral())
         }
     }
 }
@@ -122,7 +135,7 @@ case object LongGreaterThanOrEqualTo extends NumericGreaterThanOrEqualTo[Long]
 case object DoubleGreaterThanOrEqualTo extends NumericGreaterThanOrEqualTo[Double]
 
 case class StringMatch(pattern: String) extends UnaryOperator {
-    val id = StringMatch.newSuffix()
+    val id = UnaryOperatorSuffix.newSuffix()
     val patternName = s"pattern$id"
     val funcName = s"match$id"
     val regexString = "^" + pattern.replace("%", ".*") + "$"
@@ -142,7 +155,51 @@ case class StringMatch(pattern: String) extends UnaryOperator {
     }
 }
 
-object StringMatch {
+case class StringEqualToLiteral(lit: String) extends UnaryOperator {
+    val id = UnaryOperatorSuffix.newSuffix()
+    val funcName = s"stringEqualTo$id"
+
+    override def getFuncName(): String = funcName
+
+    override def getFuncDefinition(): List[String] = throw new UnsupportedOperationException()
+
+    override def getFuncLiteral(isReverse: Boolean): String = throw new UnsupportedOperationException()
+}
+
+case class IntEqualToLiteral(lit: String) extends UnaryOperator {
+    val id = UnaryOperatorSuffix.newSuffix()
+    val funcName = s"intEqualTo$id"
+
+    override def getFuncName(): String = funcName
+
+    override def getFuncDefinition(): List[String] = throw new UnsupportedOperationException()
+
+    override def getFuncLiteral(isReverse: Boolean): String = throw new UnsupportedOperationException()
+}
+
+case class LongEqualToLiteral(lit: String) extends UnaryOperator {
+    val id = UnaryOperatorSuffix.newSuffix()
+    val funcName = s"longEqualTo$id"
+
+    override def getFuncName(): String = funcName
+
+    override def getFuncDefinition(): List[String] = throw new UnsupportedOperationException()
+
+    override def getFuncLiteral(isReverse: Boolean): String = throw new UnsupportedOperationException()
+}
+
+case class DoubleEqualToLiteral(lit: String) extends UnaryOperator {
+    val id = UnaryOperatorSuffix.newSuffix()
+    val funcName = s"doubleEqualTo$id"
+
+    override def getFuncName(): String = funcName
+
+    override def getFuncDefinition(): List[String] = throw new UnsupportedOperationException()
+
+    override def getFuncLiteral(isReverse: Boolean): String = throw new UnsupportedOperationException()
+}
+
+object UnaryOperatorSuffix {
     private var suffix = 0
     def newSuffix(): Int = {
         val result = suffix

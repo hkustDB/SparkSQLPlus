@@ -145,13 +145,18 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
             val rexCall: RexCall = operand.asInstanceOf[RexCall]
             rexCall.getOperator.getName match {
                 case "=" =>
-                    // we can't handle conditions like R.a = S.b + T.c
-                    val left: Int = extractIndexFromRexInputRef(rexCall.getOperands.get(0))
-                    val right: Int = extractIndexFromRexInputRef(rexCall.getOperands.get(1))
+                    if (rexCall.getOperands.get(0).isInstanceOf[RexLiteral] || rexCall.getOperands.get(1).isInstanceOf[RexLiteral]) {
+                        // conditions like r_name = 'EUROPE'
+                        conditions.append(rexCall)
+                    } else {
+                        // we can't handle conditions like R.a = S.b + T.c
+                        val left: Int = extractIndexFromRexInputRef(rexCall.getOperands.get(0))
+                        val right: Int = extractIndexFromRexInputRef(rexCall.getOperands.get(1))
 
-                    val leftVariable = variableTable(left)
-                    val rightVariable = variableTable(right)
-                    disjointSet.merge(leftVariable, rightVariable)
+                        val leftVariable = variableTable(left)
+                        val rightVariable = variableTable(right)
+                        disjointSet.merge(leftVariable, rightVariable)
+                    }
                 case "<" | "<=" | ">" | ">=" =>
                     conditions.append(rexCall)
                 case "LIKE" =>
@@ -435,7 +440,7 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
 
     def convertRexLiteralToExpression(rexLiteral: RexLiteral): Expression = {
         rexLiteral.getType.getSqlTypeName.getName match {
-            case "VARCHAR" => StringLiteralExpression(rexLiteral.getValue.toString)
+            case "VARCHAR" => StringLiteralExpression(rexLiteral.getValue.asInstanceOf[NlsString].getValue)
             case "INTEGER" => IntLiteralExpression(rexLiteral.getValue.toString.toInt)
             case "DECIMAL" => DoubleLiteralExpression(rexLiteral.getValue.toString.toDouble)
             case "CHAR" => StringLiteralExpression(rexLiteral.getValue.asInstanceOf[NlsString].getValue)
