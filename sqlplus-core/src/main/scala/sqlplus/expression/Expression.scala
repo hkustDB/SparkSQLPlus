@@ -4,7 +4,12 @@ import sqlplus.types.{DataType, DoubleDataType, IntDataType, IntervalDataType, L
 
 sealed trait Expression {
     def getType(): DataType
+
     def getVariables(): Set[Variable]
+
+    def format(): String
+
+    override def toString: String = format()
 }
 
 sealed trait ComputeExpression extends Expression {
@@ -13,7 +18,10 @@ sealed trait ComputeExpression extends Expression {
 
 sealed trait LiteralExpression extends Expression {
     override def getVariables(): Set[Variable] = Set()
+
     def getLiteral(): String
+
+    override def format(): String = getLiteral()
 }
 
 case class SingleVariableExpression(variable: Variable) extends ComputeExpression {
@@ -25,6 +33,8 @@ case class SingleVariableExpression(variable: Variable) extends ComputeExpressio
         val raw = x + "(" + variables.indexOf(variable) + ")"
         if (cast) getType().castFromAny(raw) else raw
     }
+
+    override def format(): String = variable.name
 }
 
 abstract class BinaryExpression(left: Expression, right: Expression, operator: String, returnType: DataType) extends ComputeExpression{
@@ -44,6 +54,8 @@ abstract class BinaryExpression(left: Expression, right: Expression, operator: S
         val raw = s"($leftOperand $operator $rightOperand)"
         if (cast) getType().castFromAny(raw) else raw
     }
+
+    override def format(): String = s"(${left.format()}${operator}${right.format()})"
 }
 
 case class IntPlusIntExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "+", IntDataType)
