@@ -58,31 +58,31 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
             val comparisonHyperEdges: List[Comparison] = conditions.map({
                 case LessThanCondition(leftOperand, rightOperand) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, leftOperand, rightOperand).toSet
-                    val op = Operator.getOperator("<", leftOperand, rightOperand)
+                    val op = Operator.getOperator("<", leftOperand, rightOperand, false)
                     Comparison(path, op, leftOperand, rightOperand)
                 case LessThanOrEqualToCondition(leftOperand, rightOperand) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, leftOperand, rightOperand).toSet
-                    val op = Operator.getOperator("<=", leftOperand, rightOperand)
+                    val op = Operator.getOperator("<=", leftOperand, rightOperand, false)
                     Comparison(path, op, leftOperand, rightOperand)
                 case GreaterThanCondition(leftOperand, rightOperand) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, leftOperand, rightOperand).toSet
-                    val op = Operator.getOperator(">", leftOperand, rightOperand)
+                    val op = Operator.getOperator(">", leftOperand, rightOperand, false)
                     Comparison(path, op, leftOperand, rightOperand)
                 case GreaterThanOrEqualToCondition(leftOperand, rightOperand) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, leftOperand, rightOperand).toSet
-                    val op = Operator.getOperator(">=", leftOperand, rightOperand)
+                    val op = Operator.getOperator(">=", leftOperand, rightOperand, false)
                     Comparison(path, op, leftOperand, rightOperand)
                 case EqualToLiteralCondition(operand, literal) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, operand, operand).toSet
-                    val op = Operator.getOperator("=", operand, literal)
+                    val op = Operator.getOperator("=", operand, literal, false)
                     Comparison(path, op, operand, operand)
-                case LikeCondition(operand, s) =>
+                case LikeCondition(operand, s, isNeg) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, operand, operand).toSet
-                    val op = Operator.getOperator("LIKE", operand, s)
+                    val op = Operator.getOperator("LIKE", operand, s, isNeg)
                     Comparison(path, op, operand, operand)
-                case InCondition(operand, literals) =>
+                case InCondition(operand, literals, isNeg) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, operand, operand).toSet
-                    val op = Operator.getOperator("IN", operand, literals)
+                    val op = Operator.getOperator("IN", operand, literals, isNeg)
                     Comparison(path, op, operand, operand)
             })
 
@@ -163,30 +163,10 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
             variableTableBuffer.append(newVariable)
         }
         val variableTable = variableTableBuffer.toArray
-        val conditionRexCalls = ListBuffer.empty[RexCall]
+        val conditionRexCalls = ListBuffer.empty[(RexCall, Boolean)]    // List[(rexCall, isNeg)]
 
         for (operand <- operands) {
-            val rexCall: RexCall = operand.asInstanceOf[RexCall]
-            rexCall.getOperator.getName match {
-                case "=" =>
-                    if ((rexCall.getOperands.get(1).isInstanceOf[RexLiteral] && !rexCall.getOperands.get(0).isInstanceOf[RexLiteral])
-                        || (rexCall.getOperands.get(0).isInstanceOf[RexLiteral] && !rexCall.getOperands.get(1).isInstanceOf[RexLiteral])) {
-                        // this is a filter condition like r_name = 'EUROPE'
-                        conditionRexCalls.append(rexCall)
-                    } else {
-                        // this is a join condition like R.a = S.b
-                        val left: Int = extractIndexFromRexInputRef(rexCall.getOperands.get(0))
-                        val right: Int = extractIndexFromRexInputRef(rexCall.getOperands.get(1))
-
-                        val leftVariable = variableTable(left)
-                        val rightVariable = variableTable(right)
-                        disjointSet.merge(leftVariable, rightVariable)
-                    }
-                case "<" | "<=" | ">" | ">=" | "LIKE" | "OR" =>
-                    conditionRexCalls.append(rexCall)
-                case _ =>
-                    throw new UnsupportedOperationException(s"unsupported operator ${rexCall.getOperator.getName}")
-            }
+            processOperandInCondition(operand, variableTable, disjointSet, false, conditionRexCalls)
         }
 
         for (i <- variableTable.indices) {
@@ -195,31 +175,38 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
         }
 
         val relations = visitLogicalRelNode(logicalFilter.getInput, variableTable, 0)
-        val conditions = conditionRexCalls.toList.map(rexCall => {
+        val conditions = conditionRexCalls.toList.map(t => {
+            val (rexCall, isNeg) = t
             rexCall.getOperator.getName match {
                 case "=" if rexCall.getOperands.get(1).isInstanceOf[RexLiteral] =>
+                    assert(!isNeg)
                     // handle r_name = 'EUROPE'
                     val operand = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
                     val literal = convertRexLiteralToExpression(rexCall.getOperands.get(1).asInstanceOf[RexLiteral])
                     EqualToLiteralCondition(operand, literal)
                 case "=" if rexCall.getOperands.get(0).isInstanceOf[RexLiteral] =>
+                    assert(!isNeg)
                     // handle 'EUROPE' = r_name
                     val operand = convertRexNodeToExpression(rexCall.getOperands.get(1), variableTable)
                     val literal = convertRexLiteralToExpression(rexCall.getOperands.get(0).asInstanceOf[RexLiteral])
                     EqualToLiteralCondition(operand, literal)
                 case "<" =>
+                    assert(!isNeg)
                     val leftOperand = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
                     val rightOperand = convertRexNodeToExpression(rexCall.getOperands.get(1), variableTable)
                     LessThanCondition(leftOperand, rightOperand)
                 case "<=" =>
+                    assert(!isNeg)
                     val leftOperand = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
                     val rightOperand = convertRexNodeToExpression(rexCall.getOperands.get(1), variableTable)
                     LessThanOrEqualToCondition(leftOperand, rightOperand)
                 case ">" =>
+                    assert(!isNeg)
                     val leftOperand = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
                     val rightOperand = convertRexNodeToExpression(rexCall.getOperands.get(1), variableTable)
                     GreaterThanCondition(leftOperand, rightOperand)
                 case ">=" =>
+                    assert(!isNeg)
                     val leftOperand = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
                     val rightOperand = convertRexNodeToExpression(rexCall.getOperands.get(1), variableTable)
                     GreaterThanOrEqualToCondition(leftOperand, rightOperand)
@@ -228,7 +215,7 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
                     assert(rexCall.getOperands.get(1).isInstanceOf[RexLiteral])
                     val operand = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
                     val s = convertRexLiteralToExpression(rexCall.getOperands.get(1).asInstanceOf[RexLiteral]).asInstanceOf[StringLiteralExpression]
-                    LikeCondition(operand, s)
+                    LikeCondition(operand, s, isNeg)
                 case "OR" =>
                     // we don't allow explicit 'OR'. The 'OR' must come from condition like R.a IN ('b', 'c', 'd').
                     // this 'IN' becomes a 'OR' over 3 '=' with literal. Also, the column in the '=' must be the same.
@@ -240,7 +227,7 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
                     val operand = convertRexNodeToExpression(leftOperands.head, variableTable)
                     assert(leftOperands.forall(n => convertRexNodeToExpression(n, variableTable) == operand))
                     val literals = rightOperands.map(n => convertRexLiteralToExpression(n.asInstanceOf[RexLiteral])).toList
-                    InCondition(operand, literals)
+                    InCondition(operand, literals, isNeg)
             }
         })
 
@@ -300,6 +287,33 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
             val isFull = variableTable.forall(v => outputVariables.contains(v))
 
             (relations, conditions, outputVariables, isFull, List(), List())
+        }
+    }
+
+    private def processOperandInCondition(operand: RexNode, variableTable: Array[Variable], disjointSet: DisjointSet[Variable],
+                                          isNeg: Boolean, result: ListBuffer[(RexCall, Boolean)]): Unit = {
+        val rexCall: RexCall = operand.asInstanceOf[RexCall]
+        rexCall.getOperator.getName match {
+            case "=" =>
+                if ((rexCall.getOperands.get(1).isInstanceOf[RexLiteral] && !rexCall.getOperands.get(0).isInstanceOf[RexLiteral])
+                    || (rexCall.getOperands.get(0).isInstanceOf[RexLiteral] && !rexCall.getOperands.get(1).isInstanceOf[RexLiteral])) {
+                    // this is a filter condition like r_name = 'EUROPE'
+                    result.append((rexCall, isNeg))
+                } else {
+                    // this is a join condition like R.a = S.b
+                    val left: Int = extractIndexFromRexInputRef(rexCall.getOperands.get(0))
+                    val right: Int = extractIndexFromRexInputRef(rexCall.getOperands.get(1))
+
+                    val leftVariable = variableTable(left)
+                    val rightVariable = variableTable(right)
+                    disjointSet.merge(leftVariable, rightVariable)
+                }
+            case "<" | "<=" | ">" | ">=" | "LIKE" | "OR" =>
+                result.append((rexCall, isNeg))
+            case "NOT" =>
+                processOperandInCondition(rexCall.getOperands.get(0), variableTable, disjointSet, !isNeg, result)
+            case _ =>
+                throw new UnsupportedOperationException(s"unsupported operator ${rexCall.getOperator.getName}")
         }
     }
 

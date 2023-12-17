@@ -8,6 +8,7 @@ sealed trait Operator {
     def getFuncName(): String
     def getFuncDefinition(): List[String]
     def getFuncLiteral(isReverse: Boolean = false): String
+    def isNegated(): Boolean
 }
 
 sealed trait UnaryOperator extends Operator {
@@ -25,7 +26,7 @@ sealed trait BinaryOperator extends Operator {
 }
 
 object Operator {
-    def getOperator(op: String, left: Expression, right: Expression): Operator = {
+    def getOperator(op: String, left: Expression, right: Expression, isNeg: Boolean): Operator = {
         op match {
             case "<" if (DataType.isNumericType(left.getType()) && DataType.isNumericType(right.getType())) =>
                 selectNumericLessThanImplementation(left.getType(), right.getType())
@@ -44,7 +45,7 @@ object Operator {
             case ">=" if (left.getType() == TimestampDataType && right.getType() == TimestampDataType) =>
                 LongGreaterThanOrEqualTo
             case "LIKE" if (left.getType() == StringDataType && left.isInstanceOf[ComputeExpression] && right.isInstanceOf[StringLiteralExpression]) =>
-                StringMatch(right.asInstanceOf[StringLiteralExpression].lit)
+                StringMatch(right.asInstanceOf[StringLiteralExpression].lit, isNeg)
             case "=" if right.isInstanceOf[LiteralExpression] && !left.isInstanceOf[LiteralExpression] =>
                 selectEqualToLiteralImplementation(left.getType(), right.asInstanceOf[LiteralExpression])
             case _ => throw new UnsupportedOperationException(s"Operator $op is not applicable" +
@@ -52,9 +53,9 @@ object Operator {
         }
     }
 
-    def getOperator(op: String, head: Expression, tail: List[Expression]): Operator = {
+    def getOperator(op: String, head: Expression, tail: List[Expression], isNeg: Boolean): Operator = {
         op match {
-            case "IN" => selectInLiteralsImplementation(head.getType(), tail)
+            case "IN" => selectInLiteralsImplementation(head.getType(), tail, isNeg)
         }
     }
 
@@ -99,12 +100,12 @@ object Operator {
         }
     }
 
-    private def selectInLiteralsImplementation(dataType: DataType, literals: List[Expression]): InLiterals[_] = {
+    private def selectInLiteralsImplementation(dataType: DataType, literals: List[Expression], isNeg: Boolean): InLiterals[_] = {
         dataType match {
-            case IntDataType => IntInLiterals(literals.map(e => e.asInstanceOf[IntLiteralExpression].lit))
-            case LongDataType => LongInLiterals(literals.map(e => e.asInstanceOf[LongLiteralExpression].lit))
-            case DoubleDataType => DoubleInLiterals(literals.map(e => e.asInstanceOf[DoubleLiteralExpression].lit))
-            case StringDataType => StringInLiterals(literals.map(e => e.asInstanceOf[StringLiteralExpression].lit))
+            case IntDataType => IntInLiterals(literals.map(e => e.asInstanceOf[IntLiteralExpression].lit), isNeg)
+            case LongDataType => LongInLiterals(literals.map(e => e.asInstanceOf[LongLiteralExpression].lit), isNeg)
+            case DoubleDataType => DoubleInLiterals(literals.map(e => e.asInstanceOf[DoubleLiteralExpression].lit), isNeg)
+            case StringDataType => StringInLiterals(literals.map(e => e.asInstanceOf[StringLiteralExpression].lit), isNeg)
         }
     }
 }
@@ -129,6 +130,8 @@ class NumericBinaryOperator[T: TypeTag](suffix: String, relationalOperator: Stri
     override def leftTypeName: String = typeName
 
     override def rightTypeName: String = typeName
+
+    override def isNegated(): Boolean = false
 }
 
 case object IntLessThan extends NumericLessThan[Int]
@@ -147,7 +150,7 @@ case object IntGreaterThanOrEqualTo extends NumericGreaterThanOrEqualTo[Int]
 case object LongGreaterThanOrEqualTo extends NumericGreaterThanOrEqualTo[Long]
 case object DoubleGreaterThanOrEqualTo extends NumericGreaterThanOrEqualTo[Double]
 
-case class StringMatch(pattern: String) extends UnaryOperator {
+case class StringMatch(pattern: String, isNeg: Boolean) extends UnaryOperator {
     val id = UnaryOperatorSuffix.newSuffix()
     val patternName = s"pattern$id"
     val funcName = s"match$id"
@@ -166,6 +169,8 @@ case class StringMatch(pattern: String) extends UnaryOperator {
         assert(!isReverse)
         s"(s: String) => ${apply("s")}"
     }
+
+    override def isNegated(): Boolean = isNeg
 }
 
 class EqualToLiteral[T: TypeTag] extends UnaryOperator {
@@ -177,6 +182,8 @@ class EqualToLiteral[T: TypeTag] extends UnaryOperator {
     override def getFuncDefinition(): List[String] = throw new UnsupportedOperationException()
 
     override def getFuncLiteral(isReverse: Boolean): String = throw new UnsupportedOperationException()
+
+    override def isNegated(): Boolean = false
 }
 
 case class StringEqualToLiteral(lit: String) extends EqualToLiteral[String]
@@ -184,7 +191,7 @@ case class IntEqualToLiteral(lit: Int) extends EqualToLiteral[Int]
 case class LongEqualToLiteral(lit: Long) extends EqualToLiteral[Long]
 case class DoubleEqualToLiteral(lit: Double) extends EqualToLiteral[Double]
 
-class InLiterals[T: TypeTag] extends UnaryOperator {
+class InLiterals[T: TypeTag](private val isNeg: Boolean) extends UnaryOperator {
     val id = UnaryOperatorSuffix.newSuffix()
     private val typeName = typeOf[T].toString
 
@@ -193,12 +200,14 @@ class InLiterals[T: TypeTag] extends UnaryOperator {
     override def getFuncDefinition(): List[String] = throw new UnsupportedOperationException()
 
     override def getFuncLiteral(isReverse: Boolean): String = throw new UnsupportedOperationException()
+
+    override def isNegated(): Boolean = isNeg
 }
 
-case class StringInLiterals(literals: List[String]) extends InLiterals[String]
-case class IntInLiterals(literals: List[Int]) extends InLiterals[Int]
-case class LongInLiterals(literals: List[Long]) extends InLiterals[Long]
-case class DoubleInLiterals(literals: List[Double]) extends InLiterals[Double]
+case class StringInLiterals(literals: List[String], isNeg: Boolean) extends InLiterals[String](isNeg)
+case class IntInLiterals(literals: List[Int], isNeg: Boolean) extends InLiterals[Int](isNeg)
+case class LongInLiterals(literals: List[Long], isNeg: Boolean) extends InLiterals[Long](isNeg)
+case class DoubleInLiterals(literals: List[Double], isNeg: Boolean) extends InLiterals[Double](isNeg)
 
 object UnaryOperatorSuffix {
     private var suffix = 0

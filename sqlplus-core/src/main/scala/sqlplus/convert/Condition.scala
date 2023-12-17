@@ -10,5 +10,5 @@ case class GreaterThanCondition(leftOperand: Expression, rightOperand: Expressio
 case class GreaterThanOrEqualToCondition(leftOperand: Expression, rightOperand: Expression) extends Condition
 
 case class EqualToLiteralCondition(operand: Expression, literal: LiteralExpression) extends Condition
-case class LikeCondition(operand: Expression, s: StringLiteralExpression) extends Condition
-case class InCondition(operand: Expression, literals: List[LiteralExpression]) extends Condition
+case class LikeCondition(operand: Expression, s: StringLiteralExpression, isNeg: Boolean) extends Condition
+case class InCondition(operand: Expression, literals: List[LiteralExpression], isNeg: Boolean) extends Condition
