@@ -79,6 +79,12 @@ case class IntLiteralExpression(lit: Int) extends LiteralExpression {
     override def getType(): DataType = IntDataType
 }
 
+case class LongLiteralExpression(lit: Long) extends LiteralExpression {
+    override def getLiteral(): String = s"$lit"
+
+    override def getType(): DataType = IntDataType
+}
+
 case class DoubleLiteralExpression(lit: Double) extends LiteralExpression {
     override def getLiteral(): String = s"${lit}d"
 

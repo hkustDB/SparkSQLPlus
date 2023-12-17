@@ -45,12 +45,16 @@ object Operator {
                 LongGreaterThanOrEqualTo
             case "LIKE" if (left.getType() == StringDataType && left.isInstanceOf[ComputeExpression] && right.isInstanceOf[StringLiteralExpression]) =>
                 StringMatch(right.asInstanceOf[StringLiteralExpression].lit)
-            case "=" if left.isInstanceOf[LiteralExpression] && !right.isInstanceOf[LiteralExpression] =>
-                selectEqualToLiteralImplementation(right.getType(), left.asInstanceOf[LiteralExpression])
             case "=" if right.isInstanceOf[LiteralExpression] && !left.isInstanceOf[LiteralExpression] =>
                 selectEqualToLiteralImplementation(left.getType(), right.asInstanceOf[LiteralExpression])
             case _ => throw new UnsupportedOperationException(s"Operator $op is not applicable" +
                 s" with ${left.getType()} and ${right.getType()}.")
+        }
+    }
+
+    def getOperator(op: String, head: Expression, tail: List[Expression]): Operator = {
+        op match {
+            case "IN" => selectInLiteralsImplementation(head.getType(), tail)
         }
     }
 
@@ -86,12 +90,21 @@ object Operator {
         }
     }
 
-    private def selectEqualToLiteralImplementation(dataType: DataType, lit: LiteralExpression): Operator = {
+    private def selectEqualToLiteralImplementation(dataType: DataType, lit: LiteralExpression): EqualToLiteral[_] = {
         dataType match {
-            case IntDataType => IntEqualToLiteral(lit.getLiteral())
-            case LongDataType => LongEqualToLiteral(lit.getLiteral())
-            case DoubleDataType => DoubleEqualToLiteral(lit.getLiteral())
-            case StringDataType => StringEqualToLiteral(lit.getLiteral())
+            case IntDataType => IntEqualToLiteral(lit.asInstanceOf[IntLiteralExpression].lit)
+            case LongDataType => LongEqualToLiteral(lit.asInstanceOf[LongLiteralExpression].lit)
+            case DoubleDataType => DoubleEqualToLiteral(lit.asInstanceOf[DoubleLiteralExpression].lit)
+            case StringDataType => StringEqualToLiteral(lit.asInstanceOf[StringLiteralExpression].lit)
+        }
+    }
+
+    private def selectInLiteralsImplementation(dataType: DataType, literals: List[Expression]): InLiterals[_] = {
+        dataType match {
+            case IntDataType => IntInLiterals(literals.map(e => e.asInstanceOf[IntLiteralExpression].lit))
+            case LongDataType => LongInLiterals(literals.map(e => e.asInstanceOf[LongLiteralExpression].lit))
+            case DoubleDataType => DoubleInLiterals(literals.map(e => e.asInstanceOf[DoubleLiteralExpression].lit))
+            case StringDataType => StringInLiterals(literals.map(e => e.asInstanceOf[StringLiteralExpression].lit))
         }
     }
 }
@@ -155,49 +168,37 @@ case class StringMatch(pattern: String) extends UnaryOperator {
     }
 }
 
-case class StringEqualToLiteral(lit: String) extends UnaryOperator {
+class EqualToLiteral[T: TypeTag] extends UnaryOperator {
     val id = UnaryOperatorSuffix.newSuffix()
-    val funcName = s"stringEqualTo$id"
+    private val typeName = typeOf[T].toString
 
-    override def getFuncName(): String = funcName
+    override def getFuncName(): String = s"${typeName.toLowerCase}EqualToLiteral${id}"
 
     override def getFuncDefinition(): List[String] = throw new UnsupportedOperationException()
 
     override def getFuncLiteral(isReverse: Boolean): String = throw new UnsupportedOperationException()
 }
 
-case class IntEqualToLiteral(lit: String) extends UnaryOperator {
-    val id = UnaryOperatorSuffix.newSuffix()
-    val funcName = s"intEqualTo$id"
+case class StringEqualToLiteral(lit: String) extends EqualToLiteral[String]
+case class IntEqualToLiteral(lit: Int) extends EqualToLiteral[Int]
+case class LongEqualToLiteral(lit: Long) extends EqualToLiteral[Long]
+case class DoubleEqualToLiteral(lit: Double) extends EqualToLiteral[Double]
 
-    override def getFuncName(): String = funcName
+class InLiterals[T: TypeTag] extends UnaryOperator {
+    val id = UnaryOperatorSuffix.newSuffix()
+    private val typeName = typeOf[T].toString
+
+    override def getFuncName(): String = s"${typeName.toLowerCase}InLiterals${id}"
 
     override def getFuncDefinition(): List[String] = throw new UnsupportedOperationException()
 
     override def getFuncLiteral(isReverse: Boolean): String = throw new UnsupportedOperationException()
 }
 
-case class LongEqualToLiteral(lit: String) extends UnaryOperator {
-    val id = UnaryOperatorSuffix.newSuffix()
-    val funcName = s"longEqualTo$id"
-
-    override def getFuncName(): String = funcName
-
-    override def getFuncDefinition(): List[String] = throw new UnsupportedOperationException()
-
-    override def getFuncLiteral(isReverse: Boolean): String = throw new UnsupportedOperationException()
-}
-
-case class DoubleEqualToLiteral(lit: String) extends UnaryOperator {
-    val id = UnaryOperatorSuffix.newSuffix()
-    val funcName = s"doubleEqualTo$id"
-
-    override def getFuncName(): String = funcName
-
-    override def getFuncDefinition(): List[String] = throw new UnsupportedOperationException()
-
-    override def getFuncLiteral(isReverse: Boolean): String = throw new UnsupportedOperationException()
-}
+case class StringInLiterals(literals: List[String]) extends InLiterals[String]
+case class IntInLiterals(literals: List[Int]) extends InLiterals[Int]
+case class LongInLiterals(literals: List[Long]) extends InLiterals[Long]
+case class DoubleInLiterals(literals: List[Double]) extends InLiterals[Double]
 
 object UnaryOperatorSuffix {
     private var suffix = 0

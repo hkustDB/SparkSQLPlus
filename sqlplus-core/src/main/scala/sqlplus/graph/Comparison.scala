@@ -38,7 +38,7 @@ object Comparison {
         ID
     }
 
-    def apply(nodes: Set[JoinTreeEdge], op: String, left: Expression, right: Expression): Comparison = {
-        new Comparison(nodes, Operator.getOperator(op, left, right), left, right)
+    def apply(nodes: Set[JoinTreeEdge], op: Operator, left: Expression, right: Expression): Comparison = {
+        new Comparison(nodes, op, left, right)
     }
 }
