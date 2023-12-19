@@ -44,6 +44,14 @@ case object TimestampDataType extends DataType {
     }
 }
 
+case object DateDataType extends DataType {
+    override def getScalaTypeName: String = "Long"
+
+    override def fromString(s: String): String = throw new UnsupportedOperationException()
+
+    override def format(x: String): String = throw new UnsupportedOperationException()
+}
+
 case object DoubleDataType extends DataType {
     override def getScalaTypeName: String = "Double"
 
@@ -64,6 +72,7 @@ object DataType {
         case TIMESTAMP => TimestampDataType
         case DOUBLE => DoubleDataType
         case DECIMAL => DoubleDataType
+        case DATE => DateDataType
         case _ => throw new UnsupportedOperationException(s"SqlType ${sqlTypeName.toString} is unsupported.")
     }
 
@@ -74,6 +83,7 @@ object DataType {
         case "TIMESTAMP" => TimestampDataType
         case "DOUBLE" => DoubleDataType
         case "DECIMAL" => DoubleDataType
+        case "DATE" => DateDataType
         case _ => throw new UnsupportedOperationException(s"SqlType ${typeName} is unsupported.")
     }
 

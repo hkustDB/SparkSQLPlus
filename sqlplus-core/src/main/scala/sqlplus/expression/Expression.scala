@@ -1,6 +1,6 @@
 package sqlplus.expression
 
-import sqlplus.types.{DataType, DoubleDataType, IntDataType, IntervalDataType, LongDataType, StringDataType, TimestampDataType}
+import sqlplus.types.{DataType, DateDataType, DoubleDataType, IntDataType, IntervalDataType, LongDataType, StringDataType, TimestampDataType}
 
 sealed trait Expression {
     def getType(): DataType
@@ -61,10 +61,13 @@ abstract class BinaryExpression(left: Expression, right: Expression, operator: S
 case class IntPlusIntExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "+", IntDataType)
 case class LongPlusLongExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "+", LongDataType)
 case class TimestampPlusIntervalExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "+", TimestampDataType)
+case class DatePlusIntervalExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "+", DateDataType)
 case class DoublePlusDoubleExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "+", DoubleDataType)
 
 case class IntMinusIntExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "-", IntDataType)
 case class LongMinusLongExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "-", LongDataType)
+case class TimestampMinusIntervalExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "-", TimestampDataType)
+case class DateMinusIntervalExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "-", DateDataType)
 case class DoubleMinusDoubleExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "-", DoubleDataType)
 
 case class IntTimesIntExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "*", IntDataType)
@@ -104,6 +107,13 @@ case class IntervalLiteralExpression(lit: Long) extends LiteralExpression {
     override def getLiteral(): String = ms
 
     override def getType(): DataType = IntervalDataType
+}
+
+case class DateLiteralExpression(lit: Long) extends LiteralExpression {
+    val ms = s"${lit}L"
+    override def getLiteral(): String = ms
+
+    override def getType(): DataType = DateDataType
 }
 
 case class CaseWhenExpression(branches: List[(Operator, List[Expression], Expression)], default: Expression) extends Expression {

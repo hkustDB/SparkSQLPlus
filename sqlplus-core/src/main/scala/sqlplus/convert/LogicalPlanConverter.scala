@@ -12,6 +12,7 @@ import sqlplus.gyo.GyoAlgorithm
 import sqlplus.types._
 import sqlplus.utils.DisjointSet
 
+import java.util.GregorianCalendar
 import scala.collection.JavaConversions._
 import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
@@ -502,6 +503,8 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
                 val right = convertRexNodeToExpression(rexCall.getOperands.get(1), variableTable)
                 if (left.getType() == TimestampDataType && right.getType() == IntervalDataType) {
                     TimestampPlusIntervalExpression(left, right)
+                } else if (left.getType() == DateDataType && right.getType() == IntervalDataType) {
+                    DatePlusIntervalExpression(left, right)
                 } else {
                     DataTypeCasting.promote(left.getType(), right.getType()) match {
                         case DoubleDataType => DoublePlusDoubleExpression(left, right)
@@ -512,10 +515,16 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
             case "-" =>
                 val left = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
                 val right = convertRexNodeToExpression(rexCall.getOperands.get(1), variableTable)
-                DataTypeCasting.promote(left.getType(), right.getType()) match {
-                    case DoubleDataType => DoubleMinusDoubleExpression(left, right)
-                    case LongDataType => LongMinusLongExpression(left, right)
-                    case IntDataType => IntMinusIntExpression(left, right)
+                if (left.getType() == TimestampDataType && right.getType() == IntervalDataType) {
+                    TimestampMinusIntervalExpression(left, right)
+                } else if (left.getType() == DateDataType && right.getType() == IntervalDataType) {
+                    DateMinusIntervalExpression(left, right)
+                } else {
+                    DataTypeCasting.promote(left.getType(), right.getType()) match {
+                        case DoubleDataType => DoubleMinusDoubleExpression(left, right)
+                        case LongDataType => LongMinusLongExpression(left, right)
+                        case IntDataType => IntMinusIntExpression(left, right)
+                    }
                 }
             case "*" =>
                 val left = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
@@ -600,6 +609,7 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
             case "DECIMAL" => DoubleLiteralExpression(rexLiteral.getValue.toString.toDouble)
             case "CHAR" => StringLiteralExpression(rexLiteral.getValue.asInstanceOf[NlsString].getValue)
             case "INTERVAL_DAY" => IntervalLiteralExpression(rexLiteral.getValue.toString.toLong)
+            case "DATE" => DateLiteralExpression(rexLiteral.getValue.asInstanceOf[GregorianCalendar].getTime.getTime)
             case _ => throw new UnsupportedOperationException("unsupported literal type " + rexLiteral.getType.getSqlTypeName.getName)
         }
     }

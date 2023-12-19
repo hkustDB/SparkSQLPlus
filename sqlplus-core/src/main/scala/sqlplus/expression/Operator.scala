@@ -1,6 +1,6 @@
 package sqlplus.expression
 
-import sqlplus.types.{DataType, DataTypeCasting, DoubleDataType, IntDataType, LongDataType, StringDataType, TimestampDataType}
+import sqlplus.types.{DataType, DataTypeCasting, DateDataType, DoubleDataType, IntDataType, LongDataType, StringDataType, TimestampDataType}
 
 import scala.reflect.runtime.universe.{TypeTag, typeOf}
 
@@ -44,6 +44,14 @@ object Operator {
             case ">" if (left.getType() == TimestampDataType && right.getType() == TimestampDataType) =>
                 LongGreaterThan
             case ">=" if (left.getType() == TimestampDataType && right.getType() == TimestampDataType) =>
+                LongGreaterThanOrEqualTo
+            case "<" if (left.getType() == DateDataType && right.getType() == DateDataType) =>
+                LongLessThan
+            case "<=" if (left.getType() == DateDataType && right.getType() == DateDataType) =>
+                LongLessThanOrEqualTo
+            case ">" if (left.getType() == DateDataType && right.getType() == DateDataType) =>
+                LongGreaterThan
+            case ">=" if (left.getType() == DateDataType && right.getType() == DateDataType) =>
                 LongGreaterThanOrEqualTo
             case "LIKE" if (left.getType() == StringDataType && left.isInstanceOf[ComputeExpression] && right.isInstanceOf[StringLiteralExpression]) =>
                 StringMatch(right.asInstanceOf[StringLiteralExpression].lit, isNeg)
