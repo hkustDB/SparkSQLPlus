@@ -9,6 +9,7 @@ sealed trait Operator {
     def getFuncDefinition(): List[String]
     def getFuncLiteral(isReverse: Boolean = false): String
     def isNegated(): Boolean
+    def format(expressions: List[Expression]): String
 }
 
 sealed trait UnaryOperator extends Operator {
@@ -48,6 +49,8 @@ object Operator {
                 StringMatch(right.asInstanceOf[StringLiteralExpression].lit, isNeg)
             case "=" if right.isInstanceOf[LiteralExpression] && !left.isInstanceOf[LiteralExpression] =>
                 selectEqualToLiteralImplementation(left.getType(), right.asInstanceOf[LiteralExpression])
+            case "<>" if right.isInstanceOf[LiteralExpression] && !left.isInstanceOf[LiteralExpression] =>
+                selectNotEqualToLiteralImplementation(left.getType(), right.asInstanceOf[LiteralExpression])
             case _ => throw new UnsupportedOperationException(s"Operator $op is not applicable" +
                 s" with ${left.getType()} and ${right.getType()}.")
         }
@@ -93,10 +96,19 @@ object Operator {
 
     private def selectEqualToLiteralImplementation(dataType: DataType, lit: LiteralExpression): EqualToLiteral[_] = {
         dataType match {
-            case IntDataType => IntEqualToLiteral(lit.asInstanceOf[IntLiteralExpression].lit)
-            case LongDataType => LongEqualToLiteral(lit.asInstanceOf[LongLiteralExpression].lit)
-            case DoubleDataType => DoubleEqualToLiteral(lit.asInstanceOf[DoubleLiteralExpression].lit)
-            case StringDataType => StringEqualToLiteral(lit.asInstanceOf[StringLiteralExpression].lit)
+            case IntDataType => IntEqualToLiteral(lit.asInstanceOf[IntLiteralExpression].lit, false)
+            case LongDataType => LongEqualToLiteral(lit.asInstanceOf[LongLiteralExpression].lit, false)
+            case DoubleDataType => DoubleEqualToLiteral(lit.asInstanceOf[DoubleLiteralExpression].lit, false)
+            case StringDataType => StringEqualToLiteral(lit.asInstanceOf[StringLiteralExpression].lit, false)
+        }
+    }
+
+    private def selectNotEqualToLiteralImplementation(dataType: DataType, lit: LiteralExpression): EqualToLiteral[_] = {
+        dataType match {
+            case IntDataType => IntEqualToLiteral(lit.asInstanceOf[IntLiteralExpression].lit, true)
+            case LongDataType => LongEqualToLiteral(lit.asInstanceOf[LongLiteralExpression].lit, true)
+            case DoubleDataType => DoubleEqualToLiteral(lit.asInstanceOf[DoubleLiteralExpression].lit, true)
+            case StringDataType => StringEqualToLiteral(lit.asInstanceOf[StringLiteralExpression].lit, true)
         }
     }
 
@@ -132,6 +144,8 @@ class NumericBinaryOperator[T: TypeTag](suffix: String, relationalOperator: Stri
     override def rightTypeName: String = typeName
 
     override def isNegated(): Boolean = false
+
+    override def format(expressions: List[Expression]): String = s"(${expressions(0).format()} ${relationalOperator} ${expressions(1).format()})"
 }
 
 case object IntLessThan extends NumericLessThan[Int]
@@ -171,9 +185,14 @@ case class StringMatch(pattern: String, isNeg: Boolean) extends UnaryOperator {
     }
 
     override def isNegated(): Boolean = isNeg
+
+    override def format(expressions: List[Expression]): String = {
+        val op = if (isNeg) "NOT LIKE" else "LIKE"
+        s"(${expressions(0)} ${op} '${pattern}')"
+    }
 }
 
-class EqualToLiteral[T: TypeTag] extends UnaryOperator {
+abstract class EqualToLiteral[T: TypeTag](private val isNeg: Boolean) extends UnaryOperator {
     val id = UnaryOperatorSuffix.newSuffix()
     private val typeName = typeOf[T].toString
 
@@ -183,15 +202,38 @@ class EqualToLiteral[T: TypeTag] extends UnaryOperator {
 
     override def getFuncLiteral(isReverse: Boolean): String = throw new UnsupportedOperationException()
 
-    override def isNegated(): Boolean = false
+    override def isNegated(): Boolean = isNeg
 }
 
-case class StringEqualToLiteral(lit: String) extends EqualToLiteral[String]
-case class IntEqualToLiteral(lit: Int) extends EqualToLiteral[Int]
-case class LongEqualToLiteral(lit: Long) extends EqualToLiteral[Long]
-case class DoubleEqualToLiteral(lit: Double) extends EqualToLiteral[Double]
+case class StringEqualToLiteral(lit: String, isNeg: Boolean) extends EqualToLiteral[String](isNeg) {
+    override def format(expressions: List[Expression]): String = {
+        val op = if (isNeg) "<>" else "="
+        s"(${expressions(0)} ${op} '${lit}')"
+    }
+}
 
-class InLiterals[T: TypeTag](private val isNeg: Boolean) extends UnaryOperator {
+case class IntEqualToLiteral(lit: Int, isNeg: Boolean) extends EqualToLiteral[Int](isNeg) {
+    override def format(expressions: List[Expression]): String = {
+        val op = if (isNeg) "<>" else "="
+        s"(${expressions(0)} ${op} ${lit})"
+    }
+}
+
+case class LongEqualToLiteral(lit: Long, isNeg: Boolean) extends EqualToLiteral[Long](isNeg) {
+    override def format(expressions: List[Expression]): String = {
+        val op = if (isNeg) "<>" else "="
+        s"(${expressions(0)} ${op} ${lit})"
+    }
+}
+
+case class DoubleEqualToLiteral(lit: Double, isNeg: Boolean) extends EqualToLiteral[Double](isNeg) {
+    override def format(expressions: List[Expression]): String = {
+        val op = if (isNeg) "<>" else "="
+        s"(${expressions(0)} ${op} ${lit})"
+    }
+}
+
+abstract class InLiterals[T: TypeTag](private val isNeg: Boolean) extends UnaryOperator {
     val id = UnaryOperatorSuffix.newSuffix()
     private val typeName = typeOf[T].toString
 
@@ -204,10 +246,37 @@ class InLiterals[T: TypeTag](private val isNeg: Boolean) extends UnaryOperator {
     override def isNegated(): Boolean = isNeg
 }
 
-case class StringInLiterals(literals: List[String], isNeg: Boolean) extends InLiterals[String](isNeg)
-case class IntInLiterals(literals: List[Int], isNeg: Boolean) extends InLiterals[Int](isNeg)
-case class LongInLiterals(literals: List[Long], isNeg: Boolean) extends InLiterals[Long](isNeg)
-case class DoubleInLiterals(literals: List[Double], isNeg: Boolean) extends InLiterals[Double](isNeg)
+case class StringInLiterals(literals: List[String], isNeg: Boolean) extends InLiterals[String](isNeg) {
+    override def format(expressions: List[Expression]): String = {
+        val set = literals.map(s => s"'$s'").mkString("(", ",", ")")
+        val op = if (isNeg) "NOT IN" else "IN"
+        s"(${expressions(0)} ${op} ${set})"
+    }
+}
+
+case class IntInLiterals(literals: List[Int], isNeg: Boolean) extends InLiterals[Int](isNeg) {
+    override def format(expressions: List[Expression]): String = {
+        val set = literals.mkString("(", ",", ")")
+        val op = if (isNeg) "NOT IN" else "IN"
+        s"(${expressions(0)} ${op} ${set})"
+    }
+}
+
+case class LongInLiterals(literals: List[Long], isNeg: Boolean) extends InLiterals[Long](isNeg) {
+    override def format(expressions: List[Expression]): String = {
+        val set = literals.mkString("(", ",", ")")
+        val op = if (isNeg) "NOT IN" else "IN"
+        s"(${expressions(0)} ${op} ${set})"
+    }
+}
+
+case class DoubleInLiterals(literals: List[Double], isNeg: Boolean) extends InLiterals[Double](isNeg) {
+    override def format(expressions: List[Expression]): String = {
+        val set = literals.mkString("(", ",", ")")
+        val op = if (isNeg) "NOT IN" else "IN"
+        s"(${expressions(0)} ${op} ${set})"
+    }
+}
 
 object UnaryOperatorSuffix {
     private var suffix = 0

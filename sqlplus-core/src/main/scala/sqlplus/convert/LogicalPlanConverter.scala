@@ -1,9 +1,10 @@
 package sqlplus.convert
 
+import com.google.common.collect.BoundType
 import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.logical._
 import org.apache.calcite.rex.{RexCall, RexInputRef, RexLiteral, RexNode}
-import org.apache.calcite.util.NlsString
+import org.apache.calcite.util.{NlsString, Sarg}
 import sqlplus.expression._
 import sqlplus.ghd.GhdAlgorithm
 import sqlplus.graph._
@@ -75,6 +76,10 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
                 case EqualToLiteralCondition(operand, literal) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, operand, operand).toSet
                     val op = Operator.getOperator("=", operand, literal, false)
+                    Comparison(path, op, operand, operand)
+                case NotEqualToLiteralCondition(operand, literal) =>
+                    val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, operand, operand).toSet
+                    val op = Operator.getOperator("<>", operand, literal, false)
                     Comparison(path, op, operand, operand)
                 case LikeCondition(operand, s, isNeg) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, operand, operand).toSet
@@ -190,6 +195,18 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
                     val operand = convertRexNodeToExpression(rexCall.getOperands.get(1), variableTable)
                     val literal = convertRexLiteralToExpression(rexCall.getOperands.get(0).asInstanceOf[RexLiteral])
                     EqualToLiteralCondition(operand, literal)
+                case "<>" if rexCall.getOperands.get(1).isInstanceOf[RexLiteral] =>
+                    assert(!isNeg)
+                    // handle r_name <> 'EUROPE'
+                    val operand = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
+                    val literal = convertRexLiteralToExpression(rexCall.getOperands.get(1).asInstanceOf[RexLiteral])
+                    NotEqualToLiteralCondition(operand, literal)
+                case "<>" if rexCall.getOperands.get(0).isInstanceOf[RexLiteral] =>
+                    assert(!isNeg)
+                    // handle 'EUROPE' <> r_name
+                    val operand = convertRexNodeToExpression(rexCall.getOperands.get(1), variableTable)
+                    val literal = convertRexLiteralToExpression(rexCall.getOperands.get(0).asInstanceOf[RexLiteral])
+                    NotEqualToLiteralCondition(operand, literal)
                 case "<" =>
                     assert(!isNeg)
                     val leftOperand = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
@@ -301,17 +318,21 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
                     result.append((rexCall, isNeg))
                 } else {
                     // this is a join condition like R.a = S.b
-                    val left: Int = extractIndexFromRexInputRef(rexCall.getOperands.get(0))
-                    val right: Int = extractIndexFromRexInputRef(rexCall.getOperands.get(1))
+                    val left: Expression = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
+                    val right: Expression = convertRexNodeToExpression(rexCall.getOperands.get(1), variableTable)
 
-                    val leftVariable = variableTable(left)
-                    val rightVariable = variableTable(right)
+                    val leftVariable = left.asInstanceOf[SingleVariableExpression].variable
+                    val rightVariable = right.asInstanceOf[SingleVariableExpression].variable
                     disjointSet.merge(leftVariable, rightVariable)
                 }
             case "<" | "<=" | ">" | ">=" | "LIKE" | "OR" =>
                 result.append((rexCall, isNeg))
             case "NOT" =>
                 processOperandInCondition(rexCall.getOperands.get(0), variableTable, disjointSet, !isNeg, result)
+            case "<>" =>
+                assert((rexCall.getOperands.get(1).isInstanceOf[RexLiteral] && !rexCall.getOperands.get(0).isInstanceOf[RexLiteral])
+                    || (rexCall.getOperands.get(0).isInstanceOf[RexLiteral] && !rexCall.getOperands.get(1).isInstanceOf[RexLiteral]))
+                result.append((rexCall, isNeg))
             case _ =>
                 throw new UnsupportedOperationException(s"unsupported operator ${rexCall.getOperator.getName}")
         }
@@ -459,18 +480,12 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
         trace(reachedNodes.head).reverse
     }
 
-    def extractIndexFromRexInputRef(rexNode: RexNode): Int = {
-        rexNode match {
-            case rexInputRef: RexInputRef => rexInputRef.getIndex
-            case call: RexCall if call.op.getName == "CAST" => extractIndexFromRexInputRef(call.getOperands.get(0))
-            case _ => throw new UnsupportedOperationException(s"unsupported rexNode ${rexNode.toString}")
-        }
-    }
-
     def convertRexNodeToExpression(rexNode: RexNode, variableTable: Array[Variable]): Expression = {
         rexNode match {
             case rexInputRef: RexInputRef =>
                 SingleVariableExpression(variableTable(rexInputRef.getIndex))
+            case rexCall: RexCall if rexCall.op.getName == "CAST" =>
+                convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
             case rexCall: RexCall =>
                 convertRexCallToExpression(rexCall, variableTable)
             case rexLiteral: RexLiteral =>
@@ -510,8 +525,62 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
                     // TODO: more types
                     throw new UnsupportedOperationException(s"unsupported * for ${left.getType()} and ${right.getType()}")
                 }
+            case "CASE" =>
+                buildCaseWhenExpression(rexCall.getOperands.toList, variableTable)
             case _ =>
                 throw new UnsupportedOperationException("unsupported op " + rexCall.op.getName)
+        }
+    }
+
+    def convertRexCallToOperatorAndExpressions(rexCall: RexCall, variableTable: Array[Variable]): (Operator, List[Expression]) = {
+        rexCall.getOperator.getName match {
+            case "SEARCH" =>
+                val left = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable).asInstanceOf[SingleVariableExpression]
+                val dataType = left.getType()
+                val sarg = rexCall.getOperands.get(1).asInstanceOf[RexLiteral].getValue.asInstanceOf[Sarg[_]]
+                val ranges = sarg.rangeSet.asRanges().toList
+                val isNeg = !ranges.get(0).hasLowerBound || ranges.get(0).lowerBoundType() == BoundType.OPEN
+
+                dataType match {
+                    case StringDataType =>
+                        val hashSet = mutable.HashSet.empty[String]
+                        ranges.foreach(r => {
+                            if (r.hasLowerBound)
+                                hashSet.add(r.lowerEndpoint().asInstanceOf[NlsString].getValue)
+                            if (r.hasUpperBound)
+                                hashSet.add(r.upperEndpoint().asInstanceOf[NlsString].getValue)
+                        })
+                        (StringInLiterals(hashSet.toList, isNeg), List(left))
+                    case IntDataType =>
+                        val hashSet = mutable.HashSet.empty[Int]
+                        ranges.foreach(r => {
+                            if (r.hasLowerBound)
+                                hashSet.add(r.lowerEndpoint().asInstanceOf[java.math.BigDecimal].intValue())
+                            if (r.hasUpperBound)
+                                hashSet.add(r.upperEndpoint().asInstanceOf[java.math.BigDecimal].intValue())
+                        })
+                        (IntInLiterals(hashSet.toList, isNeg), List(left))
+                    case LongDataType =>
+                        val hashSet = mutable.HashSet.empty[Long]
+                        ranges.foreach(r => {
+                            if (r.hasLowerBound)
+                                hashSet.add(r.lowerEndpoint().asInstanceOf[java.math.BigDecimal].longValue())
+                            if (r.hasUpperBound)
+                                hashSet.add(r.upperEndpoint().asInstanceOf[java.math.BigDecimal].longValue())
+                        })
+                        (LongInLiterals(hashSet.toList, isNeg), List(left))
+                    case DoubleDataType =>
+                        val hashSet = mutable.HashSet.empty[Double]
+                        ranges.foreach(r => {
+                            if (r.hasLowerBound)
+                                hashSet.add(r.lowerEndpoint().asInstanceOf[java.math.BigDecimal].doubleValue())
+                            if (r.hasUpperBound)
+                                hashSet.add(r.upperEndpoint().asInstanceOf[java.math.BigDecimal].doubleValue())
+                        })
+                        (DoubleInLiterals(hashSet.toList, isNeg), List(left))
+                }
+            case _ =>
+                throw new UnsupportedOperationException()
         }
     }
 
@@ -525,5 +594,26 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
             case "INTERVAL_DAY" => IntervalLiteralExpression(rexLiteral.getValue.toString.toLong)
             case _ => throw new UnsupportedOperationException("unsupported literal type " + rexLiteral.getType.getSqlTypeName.getName)
         }
+    }
+
+    def buildCaseWhenExpression(operands: List[RexNode], variableTable: Array[Variable]): CaseWhenExpression = {
+        var index = 0
+        assert(operands.size % 2 == 1)  // we should have a default branch
+        val buffer = ListBuffer.empty[(Operator, List[Expression], Expression)]
+
+        while (index + 1 < operands.size) {
+            // when clause
+            val w = operands(index)
+            val (wOp, wExprs) = convertRexCallToOperatorAndExpressions(w.asInstanceOf[RexCall], variableTable)
+            // then clause
+            val t = operands(index + 1)
+            val tExpr = convertRexNodeToExpression(t, variableTable)
+            buffer.append((wOp, wExprs, tExpr))
+            index += 2
+        }
+
+        // now we reach the default branch
+        val dExpr = convertRexNodeToExpression(operands.last, variableTable)
+        CaseWhenExpression(buffer.toList, dExpr)
     }
 }

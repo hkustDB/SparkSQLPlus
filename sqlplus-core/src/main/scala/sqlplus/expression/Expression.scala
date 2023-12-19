@@ -97,3 +97,16 @@ case class IntervalLiteralExpression(lit: Long) extends LiteralExpression {
 
     override def getType(): DataType = IntervalDataType
 }
+
+case class CaseWhenExpression(branches: List[(Operator, List[Expression], Expression)], default: Expression) extends Expression {
+    assert(branches.forall(t => t._3.getType() == default.getType()))
+
+    override def getType(): DataType = default.getType()
+
+    override def getVariables(): Set[Variable] = branches.flatMap(t => t._3.getVariables()).toSet ++ default.getVariables()
+
+    override def format(): String = {
+        val lines = branches.map(t => s"WHEN ${t._1.format(t._2)} THEN ${t._3.format()}").mkString(" ")
+        s"CASE ${lines} ELSE ${default.format()} END"
+    }
+}
