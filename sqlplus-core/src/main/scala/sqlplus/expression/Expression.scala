@@ -55,7 +55,7 @@ abstract class BinaryExpression(left: Expression, right: Expression, operator: S
         if (cast) getType().castFromAny(raw) else raw
     }
 
-    override def format(): String = s"(${left.format()}${operator}${right.format()})"
+    override def format(): String = s"(${left.format()} ${operator} ${right.format()})"
 }
 
 case class IntPlusIntExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "+", IntDataType)
@@ -63,9 +63,17 @@ case class LongPlusLongExpression(left: Expression, right: Expression) extends B
 case class TimestampPlusIntervalExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "+", TimestampDataType)
 case class DoublePlusDoubleExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "+", DoubleDataType)
 
+case class IntMinusIntExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "-", IntDataType)
+case class LongMinusLongExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "-", LongDataType)
+case class DoubleMinusDoubleExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "-", DoubleDataType)
+
 case class IntTimesIntExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "*", IntDataType)
 case class LongTimesLongExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "*", LongDataType)
 case class DoubleTimesDoubleExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "*", DoubleDataType)
+
+case class IntDivideByIntExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "/", IntDataType)
+case class LongDivideByLongExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "/", LongDataType)
+case class DoubleDivideByDoubleExpression(left: Expression, right: Expression) extends BinaryExpression(left, right, "/", DoubleDataType)
 
 case class StringLiteralExpression(lit: String) extends LiteralExpression {
     override def getLiteral(): String = "\"" + lit + "\""

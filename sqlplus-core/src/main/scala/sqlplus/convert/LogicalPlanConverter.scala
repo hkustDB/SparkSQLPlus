@@ -500,30 +500,38 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
             case "+" =>
                 val left = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
                 val right = convertRexNodeToExpression(rexCall.getOperands.get(1), variableTable)
-                if (left.getType() == IntDataType && right.getType() == IntDataType)
-                    IntPlusIntExpression(left, right)
-                else if (left.getType() == LongDataType && right.getType() == LongDataType) {
-                    LongPlusLongExpression(left, right)
-                } else if (left.getType() == TimestampDataType && right.getType() == IntervalDataType) {
+                if (left.getType() == TimestampDataType && right.getType() == IntervalDataType) {
                     TimestampPlusIntervalExpression(left, right)
-                } else if (left.getType() == DoubleDataType && right.getType() == DoubleDataType) {
-                    DoublePlusDoubleExpression(left, right)
                 } else {
-                    // TODO: more types
-                    throw new UnsupportedOperationException(s"unsupported + for ${left.getType()} and ${right.getType()}")
+                    DataTypeCasting.promote(left.getType(), right.getType()) match {
+                        case DoubleDataType => DoublePlusDoubleExpression(left, right)
+                        case LongDataType => LongPlusLongExpression(left, right)
+                        case IntDataType => IntPlusIntExpression(left, right)
+                    }
+                }
+            case "-" =>
+                val left = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
+                val right = convertRexNodeToExpression(rexCall.getOperands.get(1), variableTable)
+                DataTypeCasting.promote(left.getType(), right.getType()) match {
+                    case DoubleDataType => DoubleMinusDoubleExpression(left, right)
+                    case LongDataType => LongMinusLongExpression(left, right)
+                    case IntDataType => IntMinusIntExpression(left, right)
                 }
             case "*" =>
                 val left = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
                 val right = convertRexNodeToExpression(rexCall.getOperands.get(1), variableTable)
-                if (left.getType() == IntDataType && right.getType() == IntDataType) {
-                    IntTimesIntExpression(left, right)
-                } else if (left.getType() == LongDataType && right.getType() == LongDataType) {
-                    LongTimesLongExpression(left, right)
-                } else if (left.getType() == DoubleDataType && right.getType() == DoubleDataType) {
-                    DoubleTimesDoubleExpression(left, right)
-                } else {
-                    // TODO: more types
-                    throw new UnsupportedOperationException(s"unsupported * for ${left.getType()} and ${right.getType()}")
+                DataTypeCasting.promote(left.getType(), right.getType()) match {
+                    case DoubleDataType => DoubleTimesDoubleExpression(left, right)
+                    case LongDataType => LongTimesLongExpression(left, right)
+                    case IntDataType => IntTimesIntExpression(left, right)
+                }
+            case "/" =>
+                val left = convertRexNodeToExpression(rexCall.getOperands.get(0), variableTable)
+                val right = convertRexNodeToExpression(rexCall.getOperands.get(1), variableTable)
+                DataTypeCasting.promote(left.getType(), right.getType()) match {
+                    case DoubleDataType => DoubleDivideByDoubleExpression(left, right)
+                    case LongDataType => LongDivideByLongExpression(left, right)
+                    case IntDataType => IntDivideByIntExpression(left, right)
                 }
             case "CASE" =>
                 buildCaseWhenExpression(rexCall.getOperands.toList, variableTable)
