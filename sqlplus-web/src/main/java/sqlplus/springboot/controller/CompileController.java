@@ -42,9 +42,11 @@ import java.util.stream.Collectors;
 public class CompileController {
     private scala.collection.immutable.List<Variable> outputVariables = null;
 
+    private scala.collection.immutable.List<Tuple2<Variable, Expression>> computations = null;
+
     private scala.collection.immutable.List<Variable> groupByVariables = null;
 
-    private scala.collection.immutable.List<Tuple3<String, scala.collection.immutable.List<Expression>, Variable>> aggregations = null;
+    private scala.collection.immutable.List<Tuple3<Variable, String, scala.collection.immutable.List<Expression>>> aggregations = null;
 
     private List<Tuple2<JoinTree, ComparisonHyperGraph>> candidates = null;
 
@@ -77,6 +79,7 @@ public class CompileController {
             LogicalPlanConverter converter = new LogicalPlanConverter(variableManager);
             RunResult runResult = converter.run(logicalPlan);
             outputVariables = runResult.outputVariables();
+            computations = runResult.computations();
             groupByVariables = runResult.groupByVariables();
             aggregations = runResult.aggregations();
             isFullQuery = runResult.isFull();
@@ -215,6 +218,7 @@ public class CompileController {
                 candidates.get(request.getIndex())._1,
                 candidates.get(request.getIndex())._2,
                 outputVariables,
+                computations,
                 groupByVariables,
                 aggregations
         );

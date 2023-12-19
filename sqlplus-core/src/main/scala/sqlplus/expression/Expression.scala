@@ -128,3 +128,11 @@ case class CaseWhenExpression(branches: List[(Operator, List[Expression], Expres
         s"CASE ${lines} ELSE ${default.format()} END"
     }
 }
+
+case class ExtractYearExpression(from: Expression) extends Expression {
+    override def getType(): DataType = LongDataType
+
+    override def getVariables(): Set[Variable] = from.getVariables()
+
+    override def format(): String = s"EXTRACT(YEAR FROM ${from.format()})"
+}

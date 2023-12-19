@@ -203,11 +203,10 @@ class LogicalPlanConverterTest {
         val converter = new LogicalPlanConverter(variableManager)
         val runResult = converter.run(logicalPlan)
 
-        assertFalse(runResult.isFull)
         assertTrue(runResult.outputVariables.size == 2)
         assertTrue(runResult.groupByVariables.size == 1)
         assertTrue(runResult.aggregations.size == 1)
-        assertTrue(runResult.aggregations.head._1 == "SUM")
+        assertTrue(runResult.aggregations.head._2 == "SUM")
 
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 1)
         val root = runResult.joinTreesWithComparisonHyperGraph.head._1.root
@@ -246,11 +245,10 @@ class LogicalPlanConverterTest {
         val converter = new LogicalPlanConverter(variableManager)
         val runResult = converter.run(logicalPlan)
 
-        assertFalse(runResult.isFull)
         assertTrue(runResult.outputVariables.size == 2)
         assertTrue(runResult.groupByVariables.size == 2)
         assertTrue(runResult.aggregations.size == 1)
-        assertTrue(runResult.aggregations.head._1 == "SUM")
+        assertTrue(runResult.aggregations.head._2 == "SUM")
 
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 1)
         val root = runResult.joinTreesWithComparisonHyperGraph.head._1.root
@@ -289,17 +287,16 @@ class LogicalPlanConverterTest {
         val converter = new LogicalPlanConverter(variableManager)
         val runResult = converter.run(logicalPlan)
 
-        assertFalse(runResult.isFull)
         assertTrue(runResult.groupByVariables.size == 2)
         assertTrue(runResult.aggregations.size == 3)
-        assertTrue(runResult.aggregations(0)._1 == "COUNT")
-        assertTrue(runResult.aggregations(1)._1 == "SUM")
-        assertTrue(runResult.aggregations(2)._1 == "AVG")
+        assertTrue(runResult.aggregations(0)._2 == "COUNT")
+        assertTrue(runResult.aggregations(1)._2 == "SUM")
+        assertTrue(runResult.aggregations(2)._2 == "AVG")
         assertTrue(runResult.outputVariables.size == 4)
-        assertTrue(runResult.outputVariables(0) == runResult.aggregations(0)._3)
+        assertTrue(runResult.outputVariables(0) == runResult.aggregations(0)._1)
         assertTrue(runResult.outputVariables(1) == runResult.groupByVariables(0))
-        assertTrue(runResult.outputVariables(2) == runResult.aggregations(1)._3)
-        assertTrue(runResult.outputVariables(3) == runResult.aggregations(2)._3)
+        assertTrue(runResult.outputVariables(2) == runResult.aggregations(1)._1)
+        assertTrue(runResult.outputVariables(3) == runResult.aggregations(2)._1)
 
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 1)
         val root = runResult.joinTreesWithComparisonHyperGraph.head._1.root
@@ -338,12 +335,11 @@ class LogicalPlanConverterTest {
         val converter = new LogicalPlanConverter(variableManager)
         val runResult = converter.run(logicalPlan)
 
-        assertFalse(runResult.isFull)
         assertTrue(runResult.groupByVariables.size == 2)
         assertTrue(runResult.aggregations.size == 1)
-        assertTrue(runResult.aggregations(0)._1 == "COUNT")
+        assertTrue(runResult.aggregations(0)._2 == "COUNT")
         assertTrue(runResult.outputVariables.size == 1)
-        assertTrue(runResult.outputVariables(0) == runResult.aggregations(0)._3)
+        assertTrue(runResult.outputVariables(0) == runResult.aggregations(0)._1)
 
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 2)
         runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g2")
@@ -352,7 +348,7 @@ class LogicalPlanConverterTest {
     }
 
     @Test
-    def testFullAggregation(): Unit = {
+    def testAggregationWithoutGroupBy(): Unit = {
         val ddl =
             """
               |CREATE TABLE Graph (
@@ -379,12 +375,11 @@ class LogicalPlanConverterTest {
         val converter = new LogicalPlanConverter(variableManager)
         val runResult = converter.run(logicalPlan)
 
-        assertTrue(runResult.isFull)
         assertTrue(runResult.groupByVariables.isEmpty)
         assertTrue(runResult.aggregations.size == 1)
-        assertTrue(runResult.aggregations(0)._1 == "COUNT")
+        assertTrue(runResult.aggregations(0)._2 == "COUNT")
         assertTrue(runResult.outputVariables.size == 1)
-        assertTrue(runResult.outputVariables(0) == runResult.aggregations(0)._3)
+        assertTrue(runResult.outputVariables(0) == runResult.aggregations(0)._1)
 
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 4)
         runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g1")
