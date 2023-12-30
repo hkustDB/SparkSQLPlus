@@ -328,7 +328,13 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
                     intermediateComputations(variable) = expr
                     variable
             })
-            val isFull = variableTable.forall(v => outputVariables.contains(v))
+
+            val requiredVariables: Set[Variable] = outputVariables.toSet[Variable].flatMap(v => {
+                if (intermediateComputations.contains(v))
+                    intermediateComputations(v).getVariables()
+                else Set(v)
+            })
+            val isFull = variableTable.forall(v => requiredVariables.contains(v))
             val computations = intermediateComputations.filter(kv => outputVariables.contains(kv._1) && !kv._2.isInstanceOf[SingleVariableExpression]).toList
 
             val optTopK = optLogicalSort.map(logicalSort => {
