@@ -21,6 +21,7 @@ import sqlplus.compile.SqlPlusCompiler;
 import sqlplus.convert.ConvertResult;
 import sqlplus.convert.LogicalPlanConverter;
 import sqlplus.convert.RunResult;
+import sqlplus.convert.TopK;
 import sqlplus.expression.Expression;
 import sqlplus.expression.Variable;
 import sqlplus.expression.VariableManager;
@@ -47,6 +48,8 @@ public class CompileController {
     private scala.collection.immutable.List<Variable> groupByVariables = null;
 
     private scala.collection.immutable.List<Tuple3<Variable, String, scala.collection.immutable.List<Expression>>> aggregations = null;
+
+    private scala.Option<TopK> optTopK = null;
 
     private List<Tuple2<JoinTree, ComparisonHyperGraph>> candidates = null;
 
@@ -82,6 +85,7 @@ public class CompileController {
             computations = runResult.computations();
             groupByVariables = runResult.groupByVariables();
             aggregations = runResult.aggregations();
+            optTopK = runResult.optTopK();
             isFullQuery = runResult.isFull();
             if (!isFullQuery) {
                 // is the query is non-full, we add DISTINCT keyword to SparkSQL explicitly
@@ -220,7 +224,8 @@ public class CompileController {
                 outputVariables,
                 computations,
                 groupByVariables,
-                aggregations
+                aggregations,
+                optTopK
         );
 
         SqlPlusCompiler sqlPlusCompiler = new SqlPlusCompiler(variableManager);

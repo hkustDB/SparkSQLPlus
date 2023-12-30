@@ -27,7 +27,7 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
     val ghd: GhdAlgorithm = new GhdAlgorithm
 
     def run(root: RelNode): RunResult = {
-        val (relations, conditions, outputVariables, computations, isFull, groupByVariables, aggregations) = traverseLogicalPlan(root)
+        val (relations, conditions, outputVariables, computations, isFull, groupByVariables, aggregations, optTopK) = traverseLogicalPlan(root)
         val relationalHyperGraph = relations.foldLeft(RelationalHyperGraph.EMPTY)((g, r) => g.addHyperEdge(r))
 
         val optGyoResult = if (aggregations.isEmpty) {
@@ -102,7 +102,7 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
                 List.empty
         })
 
-        RunResult(joinTreesWithComparisonHyperGraph, outputVariables, computations, isFull, groupByVariables, aggregations)
+        RunResult(joinTreesWithComparisonHyperGraph, outputVariables, computations, isFull, groupByVariables, aggregations, optTopK)
     }
 
     def candidatesWithLimit(list: List[(JoinTree, ComparisonHyperGraph)], limit: Int): List[(JoinTree, ComparisonHyperGraph)] = {
@@ -117,11 +117,20 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
         // select the joinTree and ComparisonHyperGraph with minimum degree
         val selected = runResult.joinTreesWithComparisonHyperGraph.minBy(t => t._2.getDegree())
 
-        ConvertResult(selected._1, selected._2, runResult.outputVariables, runResult.computations, runResult.groupByVariables, runResult.aggregations)
+        ConvertResult(selected._1, selected._2, runResult.outputVariables, runResult.computations, runResult.groupByVariables, runResult.aggregations, runResult.optTopK)
     }
 
-    def traverseLogicalPlan(root: RelNode): (List[Relation], List[Condition], List[Variable], List[(Variable, Expression)], Boolean,
-            List[Variable], List[(Variable, String, List[Expression])]) = {
+    def traverseLogicalPlan(node: RelNode): (List[Relation], List[Condition], List[Variable], List[(Variable, Expression)], Boolean,
+            List[Variable], List[(Variable, String, List[Expression])], Option[TopK]) = {
+        var optLogicalSort: Option[LogicalSort] = None
+        val root: RelNode = node match {
+            case sort: LogicalSort =>
+                optLogicalSort = Some(sort)
+                sort.getInput
+            case _ =>
+                node
+        }
+
         // Non-aggregation:
         // (1) LogicalProject(root) -> LogicalFilter -> LogicalJoin/LogicalAggregate/LogicalTableScan
         // Aggregation:
@@ -298,17 +307,38 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
 
             val isFull = false  // isFull is useless for aggregation queries
             // report the computations for variables that are not in original relations
-            val comparisons = intermediateComputations.filter(kv => outputVariables.contains(kv._1) && !kv._2.isInstanceOf[SingleVariableExpression]).toList
+            val computations = intermediateComputations.filter(kv => outputVariables.contains(kv._1) && !kv._2.isInstanceOf[SingleVariableExpression]).toList
 
-            (relations, conditions, outputVariables, comparisons, isFull, groupByVariables, aggregations)
+            (relations, conditions, outputVariables, computations, isFull, groupByVariables, aggregations, None)
         } else {
-            // for non-aggregation query, root is always a LogicalProject.
-            val outputVariables = optLogicalProject.get.getProjects.toList.map(p => variableTable(p.asInstanceOf[RexInputRef].getIndex))
+            val intermediateComputations = mutable.HashMap.empty[Variable, Expression]
+            val outputVariables = optLogicalProject.get.getProjects.toList.map({
+                case call: RexCall =>
+                    val expr = convertRexCallToExpression(call, variableTable)
+                    val variable = variableManager.getNewVariable(DataType.fromSqlType(call.getType.getSqlTypeName))
+                    intermediateComputations(variable) = expr
+                    variable
+                case inputRef: RexInputRef =>
+                    val variable = variableTable(inputRef.getIndex)
+                    intermediateComputations(variable) = SingleVariableExpression(variable)
+                    variable
+                case literal: RexLiteral =>
+                    val expr = convertRexLiteralToExpression(literal)
+                    val variable = variableManager.getNewVariable(DataType.fromSqlType(literal.getType.getSqlTypeName))
+                    intermediateComputations(variable) = expr
+                    variable
+            })
             val isFull = variableTable.forall(v => outputVariables.contains(v))
-            // comparisons is currently unsupported for non-aggregation queries
-            val comparisons = List.empty[(Variable, Expression)]
+            val computations = intermediateComputations.filter(kv => outputVariables.contains(kv._1) && !kv._2.isInstanceOf[SingleVariableExpression]).toList
 
-            (relations, conditions, outputVariables, comparisons, isFull, List(), List())
+            val optTopK = optLogicalSort.map(logicalSort => {
+                val isDesc = logicalSort.getCollation.getFieldCollations.get(0).getDirection.isDescending
+                val sortBy = logicalSort.getCollation.getFieldCollations.get(0).getFieldIndex
+                val limit = logicalSort.fetch.asInstanceOf[RexLiteral].getValue.asInstanceOf[java.math.BigDecimal].intValue()
+                TopK(outputVariables(sortBy), isDesc, limit)
+            })
+
+            (relations, conditions, outputVariables, computations, isFull, List(), List(), optTopK)
         }
     }
 
