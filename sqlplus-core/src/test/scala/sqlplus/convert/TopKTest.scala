@@ -1,5 +1,6 @@
 package sqlplus.convert
 
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import sqlplus.catalog.CatalogManager
 import sqlplus.expression.VariableManager
@@ -38,7 +39,16 @@ class TopKTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager)
-        converter.run(logicalPlan)
+        val runResult = converter.run(logicalPlan)
+
+        assertTrue(runResult.isFull)
+        assertTrue(runResult.outputVariables.size == 4)
+        assertTrue(runResult.groupByVariables.isEmpty)
+        assertTrue(runResult.aggregations.isEmpty)
+
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 2)
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "R"))
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
     }
 
     @Test
@@ -74,7 +84,17 @@ class TopKTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager)
-        converter.run(logicalPlan)
+        val runResult = converter.run(logicalPlan)
+
+        assertTrue(runResult.isFull)
+        assertTrue(runResult.outputVariables.size == 5)
+        assertTrue(runResult.groupByVariables.isEmpty)
+        assertTrue(runResult.aggregations.isEmpty)
+
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 3)
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "R"))
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "T"))
     }
 
     @Test
@@ -117,6 +137,17 @@ class TopKTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager)
-        converter.run(logicalPlan)
+        val runResult = converter.run(logicalPlan)
+
+        assertTrue(runResult.isFull)
+        assertTrue(runResult.outputVariables.size == 6)
+        assertTrue(runResult.groupByVariables.isEmpty)
+        assertTrue(runResult.aggregations.isEmpty)
+
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 4)
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "R"))
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "T"))
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "U"))
     }
 }
