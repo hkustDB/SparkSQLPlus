@@ -196,7 +196,7 @@ class GyoAlgorithm {
             Some(GyoResult(rootsAndSubset.map(ras => {
                 val (root, edges, hyperGraph) = convertToJoinTreeWithHyperGraph(ras._1)
                 // connex-subset is empty if the input query is non-free-connex
-                val joinTree = JoinTree(root, edges, if (isFreeConnex) ras._2.intersect(hyperGraph.getEdges()) else Set())
+                val joinTree = JoinTree(root, edges, if (isFreeConnex) ras._2.intersect(hyperGraph.getEdges()) else Set(), ras._1.getHeight())
                 (joinTree, hyperGraph)
             })))
         } else {
