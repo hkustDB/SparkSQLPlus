@@ -40,7 +40,7 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
         val relationalHyperGraph = relations.foldLeft(RelationalHyperGraph.EMPTY)((g, r) => g.addHyperEdge(r))
 
         val optGyoResult = if (aggregations.isEmpty) {
-            // non-aggregation query, try to find a jointree with outputVariables at the top
+            // non-aggregation query, try to find a jointree with requiredVariables at the top
             // if the query is non-free-connex, terminate and use GHD instead
             gyo.run(relationalHyperGraph, requiredVariables, true)
         } else {
@@ -54,11 +54,11 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
             optGyoResult.get.joinTreeWithHyperGraphs
         } else {
             if (aggregations.isEmpty) {
-                // non-aggregation query, try to find a ghd with outputVariables at the top
-                ghd.run(relationalHyperGraph, outputVariables.toSet).joinTreeWithHyperGraphs
+                // non-aggregation query, try to find a ghd with requiredVariables at the top
+                ghd.run(relationalHyperGraph, requiredVariables).joinTreeWithHyperGraphs
             } else {
-                // aggregation query, try to find any valid ghd for full query
-                ghd.run(relationalHyperGraph, relations.flatMap(r => r.getVariableList()).toSet).joinTreeWithHyperGraphs
+                // aggregation query, try to find a ghd with groupByVariables at the top
+                ghd.run(relationalHyperGraph, groupByVariables.toSet).joinTreeWithHyperGraphs
             }
         }
 
