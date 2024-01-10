@@ -633,6 +633,19 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
                         })
                         (DoubleInLiterals(hashSet.toList, isNeg), List(left))
                 }
+            case "=" =>
+                val operand = convertRexNodeToExpression(rexCall.getOperands.get(0), variableList)
+                val literal = convertRexLiteralToExpression(rexCall.getOperands.get(1).asInstanceOf[RexLiteral])
+                literal match {
+                    case StringLiteralExpression(lit) => (StringEqualToLiteral(lit, false), List(operand))
+                    case IntLiteralExpression(lit) => (IntEqualToLiteral(lit, false), List(operand))
+                    case LongLiteralExpression(lit) => (LongEqualToLiteral(lit, false), List(operand))
+                    case DoubleLiteralExpression(lit) => (DoubleEqualToLiteral(lit, false), List(operand))
+                }
+            case "LIKE" =>
+                val operand = convertRexNodeToExpression(rexCall.getOperands.get(0), variableList)
+                val s = convertRexLiteralToExpression(rexCall.getOperands.get(1).asInstanceOf[RexLiteral]).asInstanceOf[StringLiteralExpression]
+                (StringMatch(s.lit, false), List(operand))
             case _ =>
                 throw new UnsupportedOperationException()
         }

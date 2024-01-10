@@ -241,32 +241,17 @@ class TpchQueriesTest {
     }
 
     @Test
-    def testTpchQ4View1(): Unit = {
-        val view =
-            """
-              |SELECT DISTINCT l_orderkey
-              |FROM lineitem
-              |WHERE l_commitdate < l_receiptdate
-              |""".stripMargin
-
-        val nodeList = SqlPlusParser.parseDdl(ddl)
-        val catalogManager = new CatalogManager
-        catalogManager.register(nodeList)
-        val sqlNode = SqlPlusParser.parseDml(view)
-        val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
-        val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
-        val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
-        converter.run(logicalPlan)
-    }
-
-    @Test
     def testTpchQ4(): Unit = {
+        /**
+         * SELECT DISTINCT l_orderkey
+         *  FROM lineitem
+         *  WHERE l_commitdate < l_receiptdate
+         */
         val ddlView1 =
             """
               |CREATE TABLE view1
               |(
-              |    l_orderkey_distinct INTEGER
+              |    v1_orderkey_distinct INTEGER
               |);
               |""".stripMargin
 
@@ -278,7 +263,7 @@ class TpchQueriesTest {
               |     view1
               |WHERE o_orderdate >= DATE '1993-07-01'
               |  AND o_orderdate < DATE '1993-10-01'
-              |  AND l_orderkey_distinct = o_orderkey
+              |  AND v1_orderkey_distinct = o_orderkey
               |GROUP BY o_orderpriority
               |""".stripMargin
 
@@ -381,6 +366,471 @@ class TpchQueriesTest {
               |""".stripMargin
 
         val nodeList = SqlPlusParser.parseDdl(ddl)
+        val catalogManager = new CatalogManager
+        catalogManager.register(nodeList)
+        val sqlNode = SqlPlusParser.parseDml(query)
+        val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
+        val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
+        val variableManager = new VariableManager
+        val converter = new LogicalPlanConverter(variableManager)
+        converter.run(logicalPlan)
+    }
+
+    @Test
+    def testTpchQ8(): Unit = {
+        val query =
+            """
+              |SELECT o_year,
+              |       SUM(CASE
+              |               WHEN nation = 'BRAZIL'
+              |                   THEN volume
+              |               ELSE 0
+              |           END) / SUM(volume) AS mkt_share
+              |FROM (SELECT EXTRACT(YEAR FROM o_orderdate)     AS o_year,
+              |             l_extendedprice * (1 - l_discount) AS volume,
+              |             n2.n_name                          AS nation
+              |      FROM part,
+              |           supplier,
+              |           lineitem,
+              |           orders,
+              |           customer,
+              |           nation n1,
+              |           nation n2,
+              |           region
+              |      WHERE p_partkey = l_partkey
+              |        AND s_suppkey = l_suppkey
+              |        AND l_orderkey = o_orderkey
+              |        AND o_custkey = c_custkey
+              |        AND c_nationkey = n1.n_nationkey
+              |        AND n1.n_regionkey = r_regionkey
+              |        AND r_name = 'AMERICA'
+              |        AND s_nationkey = n2.n_nationkey
+              |        AND o_orderdate BETWEEN DATE '1995-01-01' AND DATE '1996-12-31'
+              |        AND p_type = 'ECONOMY ANODIZED STEEL') AS all_nations
+              |GROUP BY o_year
+              |""".stripMargin
+
+        val nodeList = SqlPlusParser.parseDdl(ddl)
+        val catalogManager = new CatalogManager
+        catalogManager.register(nodeList)
+        val sqlNode = SqlPlusParser.parseDml(query)
+        val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
+        val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
+        val variableManager = new VariableManager
+        val converter = new LogicalPlanConverter(variableManager)
+        converter.run(logicalPlan)
+    }
+
+    @Test
+    def testTpchQ9(): Unit = {
+        val query =
+            """
+              |SELECT nation,
+              |       o_year,
+              |       SUM(amount) AS sum_profit
+              |FROM (SELECT n_name                                                          AS nation,
+              |             EXTRACT(YEAR FROM o_orderdate)                                  AS o_year,
+              |             l_extendedprice * (1 - l_discount) - ps_supplycost * l_quantity AS amount
+              |      FROM part,
+              |           supplier,
+              |           lineitem,
+              |           partsupp,
+              |           orders,
+              |           nation
+              |      WHERE s_suppkey = l_suppkey
+              |        AND ps_suppkey = l_suppkey
+              |        AND ps_partkey = l_partkey
+              |        AND p_partkey = l_partkey
+              |        AND o_orderkey = l_orderkey
+              |        AND s_nationkey = n_nationkey
+              |        AND p_name LIKE '%green%') AS profit
+              |GROUP BY nation, o_year
+              |""".stripMargin
+
+        val nodeList = SqlPlusParser.parseDdl(ddl)
+        val catalogManager = new CatalogManager
+        catalogManager.register(nodeList)
+        val sqlNode = SqlPlusParser.parseDml(query)
+        val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
+        val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
+        val variableManager = new VariableManager
+        val converter = new LogicalPlanConverter(variableManager)
+        converter.run(logicalPlan)
+    }
+
+    @Test
+    def testTpchQ10(): Unit = {
+        val query =
+            """
+              |SELECT c_custkey,
+              |       c_name,
+              |       SUM(l_extendedprice * (1 - l_discount)) AS revenue,
+              |       c_acctbal,
+              |       n_name,
+              |       c_address,
+              |       c_phone,
+              |       c_comment
+              |FROM customer,
+              |     orders,
+              |     lineitem,
+              |     nation
+              |WHERE c_custkey = o_custkey
+              |  AND l_orderkey = o_orderkey
+              |  AND o_orderdate >= DATE '1993-10-01'
+              |  AND o_orderdate < DATE '1994-01-01'
+              |  AND l_returnflag = 'R'
+              |  AND c_nationkey = n_nationkey
+              |GROUP BY c_custkey, c_name, c_acctbal, c_phone, n_name, c_address, c_comment
+              |""".stripMargin
+
+        val nodeList = SqlPlusParser.parseDdl(ddl)
+        val catalogManager = new CatalogManager
+        catalogManager.register(nodeList)
+        val sqlNode = SqlPlusParser.parseDml(query)
+        val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
+        val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
+        val variableManager = new VariableManager
+        val converter = new LogicalPlanConverter(variableManager)
+        converter.run(logicalPlan)
+    }
+
+    @Test
+    def testTpchQ11(): Unit = {
+        val query =
+            """
+              |SELECT ps_partkey,
+              |       SUM(ps_supplycost * ps_availqty) AS `value`
+              |FROM partsupp,
+              |     supplier,
+              |     nation
+              |WHERE ps_suppkey = s_suppkey
+              |  AND s_nationkey = n_nationkey
+              |  AND n_name = 'GERMANY'
+              |GROUP BY ps_partkey
+              |""".stripMargin
+
+        val nodeList = SqlPlusParser.parseDdl(ddl)
+        val catalogManager = new CatalogManager
+        catalogManager.register(nodeList)
+        val sqlNode = SqlPlusParser.parseDml(query)
+        val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
+        val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
+        val variableManager = new VariableManager
+        val converter = new LogicalPlanConverter(variableManager)
+        converter.run(logicalPlan)
+    }
+
+    @Test
+    def testTpchQ12(): Unit = {
+        val query =
+            """
+              |SELECT l_shipmode,
+              |       SUM(CASE
+              |               WHEN o_orderpriority = '1-URGENT'
+              |                   OR o_orderpriority = '2-HIGH'
+              |                   THEN 1
+              |               ELSE 0
+              |           END) AS high_line_count,
+              |       SUM(CASE
+              |               WHEN o_orderpriority <> '1-URGENT'
+              |                   AND o_orderpriority <> '2-HIGH'
+              |                   THEN 1
+              |               ELSE 0
+              |           END) AS low_line_count
+              |FROM orders,
+              |     lineitem
+              |WHERE o_orderkey = l_orderkey
+              |  AND l_shipmode IN ('MAIL', 'SHIP')
+              |  AND l_commitdate < l_receiptdate
+              |  AND l_shipdate < l_commitdate
+              |  AND l_receiptdate >= DATE '1994-01-01'
+              |  AND l_receiptdate < DATE '1995-01-01'
+              |GROUP BY l_shipmode
+              |""".stripMargin
+
+        val nodeList = SqlPlusParser.parseDdl(ddl)
+        val catalogManager = new CatalogManager
+        catalogManager.register(nodeList)
+        val sqlNode = SqlPlusParser.parseDml(query)
+        val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
+        val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
+        val variableManager = new VariableManager
+        val converter = new LogicalPlanConverter(variableManager)
+        converter.run(logicalPlan)
+    }
+
+    @Test
+    def testTpchQ14(): Unit = {
+        val query =
+            """
+              |SELECT 100.00 * SUM(CASE
+              |                        WHEN p_type LIKE 'PROMO%'
+              |                            THEN l_extendedprice * (1 - l_discount)
+              |                        ELSE 0
+              |    END) / SUM(l_extendedprice * (1 - l_discount)) AS promo_revenue
+              |FROM lineitem,
+              |     part
+              |WHERE l_partkey = p_partkey
+              |  AND l_shipdate >= DATE '1995-09-01'
+              |  AND l_shipdate < DATE '1995-10-01'
+              |""".stripMargin
+
+        val nodeList = SqlPlusParser.parseDdl(ddl)
+        val catalogManager = new CatalogManager
+        catalogManager.register(nodeList)
+        val sqlNode = SqlPlusParser.parseDml(query)
+        val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
+        val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
+        val variableManager = new VariableManager
+        val converter = new LogicalPlanConverter(variableManager)
+        converter.run(logicalPlan)
+    }
+
+    @Test
+    def testTpchQ15(): Unit = {
+        /**
+         * SELECT l_suppkey,
+         *  SUM(l_extendedprice * (1 - l_discount))
+         *  FROM lineitem
+         *  WHERE l_shipdate >= DATE '1996-01-01'
+         *  AND l_shipdate < DATE '1996-04-01'
+         *  GROUP BY l_suppkey
+         */
+        val ddlView1 =
+            """
+              |CREATE TABLE view1
+              |(
+              |    supplier_no   INTEGER,
+              |    total_revenue DECIMAL
+              |);
+              |""".stripMargin
+
+        /**
+         * SELECT MAX(total_revenue)
+         *  FROM view1
+         */
+        val ddlView2 =
+            """
+              |CREATE TABLE view2
+              |(
+              |    v2_total_revenue_max DECIMAL
+              |);
+              |""".stripMargin
+
+        val query =
+            """
+              |SELECT s_suppkey,
+              |       s_name,
+              |       s_address,
+              |       s_phone,
+              |       total_revenue
+              |FROM supplier,
+              |     view1,
+              |     view2
+              |WHERE s_suppkey = supplier_no
+              |  AND total_revenue = v2_total_revenue_max
+              |""".stripMargin
+
+        val nodeList = SqlPlusParser.parseDdl(ddl + ddlView1 + ddlView2)
+        val catalogManager = new CatalogManager
+        catalogManager.register(nodeList)
+        val sqlNode = SqlPlusParser.parseDml(query)
+        val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
+        val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
+        val variableManager = new VariableManager
+        val converter = new LogicalPlanConverter(variableManager)
+        converter.run(logicalPlan)
+    }
+
+    @Test
+    def testTpchQ17(): Unit = {
+        /**
+         * SELECT l_partkey,
+         *  0.2 * AVG(l_quantity)
+         *  FROM lineitem
+         *  GROUP BY l_partkey
+         */
+        val ddlView1 =
+            """
+              |CREATE TABLE view1
+              |(
+              |    v1_partkey      INTEGER,
+              |    v1_quantity_avg DECIMAL
+              |);
+              |""".stripMargin
+
+        val query =
+            """
+              |SELECT SUM(l_extendedprice) / 7.0 AS avg_yearly
+              |FROM lineitem,
+              |     part,
+              |     view1
+              |WHERE p_partkey = l_partkey
+              |  AND p_brand = 'Brand#23'
+              |  AND p_container = 'MED BOX'
+              |  AND l_partkey = v1_partkey
+              |  AND l_quantity > v1_quantity_avg
+              |""".stripMargin
+
+        val nodeList = SqlPlusParser.parseDdl(ddl + ddlView1)
+        val catalogManager = new CatalogManager
+        catalogManager.register(nodeList)
+        val sqlNode = SqlPlusParser.parseDml(query)
+        val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
+        val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
+        val variableManager = new VariableManager
+        val converter = new LogicalPlanConverter(variableManager)
+        converter.run(logicalPlan)
+    }
+
+    @Test
+    def testTpchQ18(): Unit = {
+        /**
+         * SELECT l_orderkey
+         *  FROM lineitem
+         *  GROUP BY l_orderkey
+         *  HAVING SUM(l_quantity) > 300
+         */
+        val ddlView1 =
+            """
+              |CREATE TABLE view1
+              |(
+              |    v1_orderkey INTEGER
+              |);
+              |""".stripMargin
+
+        val query =
+            """
+              |SELECT c_name,
+              |       c_custkey,
+              |       o_orderkey,
+              |       o_orderdate,
+              |       o_totalprice,
+              |       SUM(l_quantity)
+              |FROM customer,
+              |     orders,
+              |     lineitem,
+              |     view1
+              |WHERE o_orderkey = v1_orderkey
+              |  AND c_custkey = o_custkey
+              |  AND o_orderkey = l_orderkey
+              |GROUP BY c_name, c_custkey, o_orderkey, o_orderdate, o_totalprice
+              |""".stripMargin
+
+        val nodeList = SqlPlusParser.parseDdl(ddl + ddlView1)
+        val catalogManager = new CatalogManager
+        catalogManager.register(nodeList)
+        val sqlNode = SqlPlusParser.parseDml(query)
+        val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
+        val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
+        val variableManager = new VariableManager
+        val converter = new LogicalPlanConverter(variableManager)
+        converter.run(logicalPlan)
+    }
+
+    @Test
+    def testTpchQ19(): Unit = {
+        val query =
+            """
+              |SELECT SUM(l_extendedprice * (1 - l_discount)) AS revenue
+              |FROM lineitem,
+              |     part
+              |WHERE p_partkey = l_partkey
+              |  AND p_brand = 'Brand#12'
+              |  AND p_container IN ('SM CASE', 'SM BOX', 'SM PACK', 'SM PKG')
+              |  AND l_quantity >= 1
+              |  AND l_quantity <= 11
+              |  AND p_size BETWEEN 1 AND 5
+              |  AND l_shipmode IN ('AIR', 'AIR REG')
+              |  AND l_shipinstruct = 'DELIVER IN PERSON'
+              |""".stripMargin
+
+        val nodeList = SqlPlusParser.parseDdl(ddl)
+        val catalogManager = new CatalogManager
+        catalogManager.register(nodeList)
+        val sqlNode = SqlPlusParser.parseDml(query)
+        val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
+        val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
+        val variableManager = new VariableManager
+        val converter = new LogicalPlanConverter(variableManager)
+        converter.run(logicalPlan)
+    }
+
+    @Test
+    def testTpchQ20View3(): Unit = {
+        /**
+         * SELECT p_partkey
+         *  FROM part
+         *  WHERE p_name LIKE 'forest%'
+         */
+        val ddlView1 =
+            """
+              |CREATE TABLE view1
+              |(
+              |    v1_partkey INTEGER
+              |);
+              |""".stripMargin
+
+        /**
+         * SELECT 0.5 * SUM(l_quantity)
+         *  FROM lineitem
+         *  WHERE l_partkey = ps_partkey
+         *  AND l_suppkey = ps_suppkey
+         *  AND l_shipdate >= DATE '1994-01-01'
+         *  AND l_shipdate < DATE '1995-01-01'
+         */
+        val ddlView2 =
+            """
+              |CREATE TABLE view2
+              |(
+              |    v2_quantity_sum DECIMAL
+              |);
+              |""".stripMargin
+
+        val query =
+            """
+              |SELECT ps_suppkey
+              |FROM partsupp,
+              |     view1,
+              |     view2
+              |WHERE ps_partkey = v1_partkey
+              |  AND ps_availqty > v2_quantity_sum
+              |""".stripMargin
+
+        val nodeList = SqlPlusParser.parseDdl(ddl + ddlView1 + ddlView2)
+        val catalogManager = new CatalogManager
+        catalogManager.register(nodeList)
+        val sqlNode = SqlPlusParser.parseDml(query)
+        val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
+        val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
+        val variableManager = new VariableManager
+        val converter = new LogicalPlanConverter(variableManager)
+        converter.run(logicalPlan)
+    }
+
+    @Test
+    def testTpchQ20(): Unit = {
+        val ddlView3 =
+            """
+              |CREATE TABLE view3
+              |(
+              |    v3_suppkey INTEGER
+              |);
+              |""".stripMargin
+
+        val query =
+            """
+              |SELECT s_name,
+              |       s_address
+              |FROM supplier,
+              |     nation,
+              |     view3
+              |WHERE s_suppkey = v3_suppkey
+              |  AND s_nationkey = n_nationkey
+              |  AND n_name = 'CANADA'
+              |""".stripMargin
+
+        val nodeList = SqlPlusParser.parseDdl(ddl + ddlView3)
         val catalogManager = new CatalogManager
         catalogManager.register(nodeList)
         val sqlNode = SqlPlusParser.parseDml(query)
