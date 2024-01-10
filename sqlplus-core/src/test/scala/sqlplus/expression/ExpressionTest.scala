@@ -53,7 +53,7 @@ class ExpressionTest {
 
         assertTrue(stringLitExpr.toString == "\"Hello,World!\"")
         assertTrue(intLitExpr.toString == "42")
-        assertTrue(doubleLitExpr.toString == "37.3d")
-        assertTrue(intervalLitExpr.toString == "1440000L")
+        assertTrue(doubleLitExpr.toString == "37.3")
+        assertTrue(intervalLitExpr.toString == "1440000")
     }
 }

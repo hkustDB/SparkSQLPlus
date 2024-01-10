@@ -20,8 +20,6 @@ sealed trait LiteralExpression extends Expression {
     override def getVariables(): Set[Variable] = Set()
 
     def getLiteral(): String
-
-    override def format(): String = getLiteral()
 }
 
 case class SingleVariableExpression(variable: Variable) extends ComputeExpression {
@@ -82,24 +80,32 @@ case class StringLiteralExpression(lit: String) extends LiteralExpression {
     override def getLiteral(): String = "\"" + lit + "\""
 
     override def getType(): DataType = StringDataType
+
+    override def format(): String = getLiteral()
 }
 
 case class IntLiteralExpression(lit: Int) extends LiteralExpression {
     override def getLiteral(): String = s"$lit"
 
     override def getType(): DataType = IntDataType
+
+    override def format(): String = lit.toString
 }
 
 case class LongLiteralExpression(lit: Long) extends LiteralExpression {
     override def getLiteral(): String = s"$lit"
 
     override def getType(): DataType = IntDataType
+
+    override def format(): String = lit.toString
 }
 
 case class DoubleLiteralExpression(lit: Double) extends LiteralExpression {
     override def getLiteral(): String = s"${lit}d"
 
     override def getType(): DataType = DoubleDataType
+
+    override def format(): String = lit.toString
 }
 
 case class IntervalLiteralExpression(lit: Long) extends LiteralExpression {
@@ -107,6 +113,8 @@ case class IntervalLiteralExpression(lit: Long) extends LiteralExpression {
     override def getLiteral(): String = ms
 
     override def getType(): DataType = IntervalDataType
+
+    override def format(): String = lit.toString
 }
 
 case class DateLiteralExpression(lit: Long) extends LiteralExpression {
@@ -114,6 +122,8 @@ case class DateLiteralExpression(lit: Long) extends LiteralExpression {
     override def getLiteral(): String = ms
 
     override def getType(): DataType = DateDataType
+
+    override def format(): String = lit.toString
 }
 
 case class CaseWhenExpression(branches: List[(Operator, List[Expression], Expression)], default: Expression) extends Expression {
