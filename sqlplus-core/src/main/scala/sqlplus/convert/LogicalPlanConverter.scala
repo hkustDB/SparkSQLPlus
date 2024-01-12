@@ -50,20 +50,20 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
             gyo.run(relationalHyperGraph, groupByVariables.toSet, false)
         }
 
-        val joinTreeWithHyperGraphs = if (optGyoResult.nonEmpty) {
-            optGyoResult.get.joinTreeWithHyperGraphs
+        val (candidates, isFreeConnex) = if (optGyoResult.nonEmpty) {
+            (optGyoResult.get.candidates, optGyoResult.get.isFreeConnex)
         } else {
             if (aggregations.isEmpty) {
                 // non-aggregation query, try to find a ghd with requiredVariables at the top
-                ghd.run(relationalHyperGraph, requiredVariables).joinTreeWithHyperGraphs
+                (ghd.run(relationalHyperGraph, requiredVariables).candidates, false)
             } else {
                 // aggregation query, try to find a ghd with groupByVariables at the top
-                ghd.run(relationalHyperGraph, groupByVariables.toSet).joinTreeWithHyperGraphs
+                (ghd.run(relationalHyperGraph, groupByVariables.toSet).candidates, false)
             }
         }
 
         // construct a ComparisonHyperGraph for each join tree, the ComparisonHyperGraph has the minimum degree
-        val joinTreesWithComparisonHyperGraph: List[(JoinTree, ComparisonHyperGraph)] = joinTreeWithHyperGraphs.flatMap(t => {
+        val joinTreesWithComparisonHyperGraph: List[(JoinTree, ComparisonHyperGraph)] = candidates.flatMap(t => {
             val joinTree = t._1
             val hyperGraph = t._2
             val comparisonHyperEdges: List[Comparison] = conditions.map({
@@ -111,7 +111,7 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
                 List.empty
         })
 
-        RunResult(joinTreesWithComparisonHyperGraph, outputVariables, computations, isFull, groupByVariables, aggregations, optTopK)
+        RunResult(joinTreesWithComparisonHyperGraph, outputVariables, computations, isFull, isFreeConnex, groupByVariables, aggregations, optTopK)
     }
 
     def candidatesWithLimit(list: List[(JoinTree, ComparisonHyperGraph)], limit: Int): List[(JoinTree, ComparisonHyperGraph)] = {
@@ -126,7 +126,8 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
         // select the joinTree and ComparisonHyperGraph with minimum degree
         val selected = runResult.joinTreesWithComparisonHyperGraph.minBy(t => t._2.getDegree())
 
-        ConvertResult(selected._1, selected._2, runResult.outputVariables, runResult.computations, runResult.groupByVariables, runResult.aggregations, runResult.optTopK)
+        ConvertResult(selected._1, selected._2, runResult.outputVariables, runResult.computations, runResult.isFreeConnex,
+            runResult.groupByVariables, runResult.aggregations, runResult.optTopK)
     }
 
     def traverseLogicalPlan(node: RelNode): Context = {

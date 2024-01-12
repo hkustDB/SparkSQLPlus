@@ -33,9 +33,9 @@ class GhdAlgorithmTest {
             .addHyperEdge(r4).addHyperEdge(r5).addHyperEdge(r6).addHyperEdge(r7)
 
         val result = algorithm.run(hyperGraph, Set(v1, v2, v3, v4, v5, v6))
-        assertTrue(result.joinTreeWithHyperGraphs.size == 1)
+        assertTrue(result.candidates.size == 1)
 
-        val (joinTree, graph) = result.joinTreeWithHyperGraphs.head
+        val (joinTree, graph) = result.candidates.head
         assertTrue(joinTree.subset.size == 3)
         assertTrue(joinTree.root == r7)
         joinTree.edges.foreach(e => {
@@ -85,9 +85,9 @@ class GhdAlgorithmTest {
             .addHyperEdge(r4).addHyperEdge(r5).addHyperEdge(r6).addHyperEdge(r7)
 
         val result = algorithm.run(hyperGraph, Set(v3, v4))
-        assertTrue(result.joinTreeWithHyperGraphs.size == 1)
+        assertTrue(result.candidates.size == 1)
 
-        val (joinTree, graph) = result.joinTreeWithHyperGraphs.head
+        val (joinTree, graph) = result.candidates.head
         assertTrue(joinTree.subset.size == 1)
         assertTrue(joinTree.subset.head == r7)
         assertTrue(joinTree.root == r7)
@@ -141,9 +141,9 @@ class GhdAlgorithmTest {
             .addHyperEdge(r4).addHyperEdge(r5).addHyperEdge(r6).addHyperEdge(r7).addHyperEdge(r8)
 
         val result = algorithm.run(hyperGraph, Set(v3, v5))
-        assertTrue(result.joinTreeWithHyperGraphs.size == 1)
+        assertTrue(result.candidates.size == 1)
 
-        val (joinTree, graph) = result.joinTreeWithHyperGraphs.head
+        val (joinTree, graph) = result.candidates.head
         assertTrue(joinTree.subset.size == 5)
         assertTrue(joinTree.root.isInstanceOf[BagRelation])
     }

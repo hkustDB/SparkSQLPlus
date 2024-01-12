@@ -45,6 +45,8 @@ public class CompileController {
 
     private scala.collection.immutable.List<Tuple2<Variable, Expression>> computations = null;
 
+    private boolean isFreeConnex = false;
+
     private scala.collection.immutable.List<Variable> groupByVariables = null;
 
     private scala.collection.immutable.List<Tuple3<Variable, String, scala.collection.immutable.List<Expression>>> aggregations = null;
@@ -83,6 +85,7 @@ public class CompileController {
             RunResult runResult = converter.run(logicalPlan);
             outputVariables = runResult.outputVariables();
             computations = runResult.computations();
+            isFreeConnex = runResult.isFreeConnex();
             groupByVariables = runResult.groupByVariables();
             aggregations = runResult.aggregations();
             optTopK = runResult.optTopK();
@@ -223,6 +226,7 @@ public class CompileController {
                 candidates.get(request.getIndex())._2,
                 outputVariables,
                 computations,
+                isFreeConnex,
                 groupByVariables,
                 aggregations,
                 optTopK

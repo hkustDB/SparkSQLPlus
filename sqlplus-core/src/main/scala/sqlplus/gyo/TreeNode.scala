@@ -24,8 +24,6 @@ sealed trait TreeNode {
         val childrenSignatures = getChildren().toList.map(tn => tn.getSignature()).sorted.mkString(",")
         s"$relationName-$variables-[$childrenSignatures]"
     }
-
-    def getHeight(): Int
 }
 
 case class LeafTreeNode(relation: Relation) extends TreeNode {
@@ -38,13 +36,9 @@ case class LeafTreeNode(relation: Relation) extends TreeNode {
 
     override def attachAll(children: Set[TreeNode]): TreeNode =
         InternalTreeNode(relation, children)
-
-    override def getHeight(): Int = 0
 }
 
 case class InternalTreeNode(relation: Relation, children: Set[TreeNode]) extends TreeNode {
-    lazy val height: Int = children.map(c => c.getHeight()).max + 1
-
     override def getRelation(): Relation = relation
 
     override def getChildren(): Set[TreeNode] = children
@@ -54,6 +48,4 @@ case class InternalTreeNode(relation: Relation, children: Set[TreeNode]) extends
 
     override def attachAll(c: Set[TreeNode]): TreeNode =
         InternalTreeNode(relation, children ++ c)
-
-    override def getHeight(): Int = height
 }

@@ -38,6 +38,7 @@ class LogicalPlanConverterTest {
         val runResult = converter.run(logicalPlan)
 
         assertTrue(runResult.isFull)
+        assertTrue(runResult.isFreeConnex)
         assertTrue(runResult.outputVariables.size == 4)
         assertTrue(runResult.groupByVariables.isEmpty)
         assertTrue(runResult.aggregations.isEmpty)
@@ -46,6 +47,10 @@ class LogicalPlanConverterTest {
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g1"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g2"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g3"))
+
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.forall(t => t._1.subset.exists(r => r.getTableDisplayName() == "g1")))
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.forall(t => t._1.subset.exists(r => r.getTableDisplayName() == "g2")))
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.forall(t => t._1.subset.exists(r => r.getTableDisplayName() == "g3")))
     }
 
     @Test
@@ -77,6 +82,7 @@ class LogicalPlanConverterTest {
         val runResult = converter.run(logicalPlan)
 
         assertFalse(runResult.isFull)
+        assertTrue(runResult.isFreeConnex)
         assertTrue(runResult.outputVariables.size == 2)
         assertTrue(runResult.groupByVariables.isEmpty)
         assertTrue(runResult.aggregations.isEmpty)
@@ -117,6 +123,7 @@ class LogicalPlanConverterTest {
         val runResult = converter.run(logicalPlan)
 
         assertFalse(runResult.isFull)
+        assertTrue(runResult.isFreeConnex)
         assertTrue(runResult.outputVariables.size == 1)
         assertTrue(runResult.groupByVariables.isEmpty)
         assertTrue(runResult.aggregations.isEmpty)
@@ -158,6 +165,7 @@ class LogicalPlanConverterTest {
         val runResult = converter.run(logicalPlan)
 
         assertFalse(runResult.isFull)
+        assertTrue(runResult.isFreeConnex)
         assertTrue(runResult.outputVariables.size == 3)
         assertTrue(runResult.groupByVariables.isEmpty)
         assertTrue(runResult.aggregations.isEmpty)
@@ -203,6 +211,8 @@ class LogicalPlanConverterTest {
         val converter = new LogicalPlanConverter(variableManager)
         val runResult = converter.run(logicalPlan)
 
+        assertTrue(runResult.isFreeConnex)
+
         assertTrue(runResult.outputVariables.size == 2)
         assertTrue(runResult.groupByVariables.size == 1)
         assertTrue(runResult.aggregations.size == 1)
@@ -244,6 +254,8 @@ class LogicalPlanConverterTest {
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager)
         val runResult = converter.run(logicalPlan)
+
+        assertTrue(runResult.isFreeConnex)
 
         assertTrue(runResult.outputVariables.size == 2)
         assertTrue(runResult.groupByVariables.size == 2)
@@ -335,6 +347,8 @@ class LogicalPlanConverterTest {
         val converter = new LogicalPlanConverter(variableManager)
         val runResult = converter.run(logicalPlan)
 
+        assertFalse(runResult.isFreeConnex)
+
         assertTrue(runResult.groupByVariables.size == 2)
         assertTrue(runResult.aggregations.size == 1)
         assertTrue(runResult.aggregations(0)._2 == "COUNT")
@@ -342,9 +356,11 @@ class LogicalPlanConverterTest {
         assertTrue(runResult.outputVariables(0) == runResult.aggregations(0)._1)
 
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 2)
-        runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g2")
-        runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g3")
-        runResult.joinTreesWithComparisonHyperGraph.forall(t => t._1.subset.isEmpty)
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g2"))
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g3"))
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.forall(t => t._1.subset.size == 2))
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.forall(t => t._1.subset.exists(r => r.getTableDisplayName() == "g2")))
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.forall(t => t._1.subset.exists(r => r.getTableDisplayName() == "g3")))
     }
 
     @Test
@@ -375,6 +391,8 @@ class LogicalPlanConverterTest {
         val converter = new LogicalPlanConverter(variableManager)
         val runResult = converter.run(logicalPlan)
 
+        assertTrue(runResult.isFreeConnex)
+
         assertTrue(runResult.groupByVariables.isEmpty)
         assertTrue(runResult.aggregations.size == 1)
         assertTrue(runResult.aggregations(0)._2 == "COUNT")
@@ -382,10 +400,10 @@ class LogicalPlanConverterTest {
         assertTrue(runResult.outputVariables(0) == runResult.aggregations(0)._1)
 
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 4)
-        runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g1")
-        runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g2")
-        runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g3")
-        runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g4")
-        runResult.joinTreesWithComparisonHyperGraph.forall(t => t._1.subset.isEmpty)
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g1"))
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g2"))
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g3"))
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "g4"))
+        assertTrue(runResult.joinTreesWithComparisonHyperGraph.forall(t => t._1.subset.isEmpty))
     }
 }

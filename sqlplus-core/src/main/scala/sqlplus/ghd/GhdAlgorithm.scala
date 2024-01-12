@@ -184,7 +184,7 @@ class GhdAlgorithm {
                 (z._1 ++ t._1, z._2 ++ t._2)
             })
             // TODO: compute height for join trees created by GHD
-            val joinTree = new JoinTree(convertResult._3, combined._1, convertResult._2, 0)
+            val joinTree = new JoinTree(convertResult._3, combined._1, convertResult._2)
             val hypergraph = combined._2.foldLeft(RelationalHyperGraph.EMPTY)((z, e) => z.addHyperEdge(e))
             (joinTree, hypergraph)
         })

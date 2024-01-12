@@ -49,9 +49,6 @@ class TopKTest {
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 2)
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "R"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
-
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "R").head._1.height == 1)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "S").head._1.height == 1)
     }
 
     @Test
@@ -98,10 +95,6 @@ class TopKTest {
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "R"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "T"))
-
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "R").head._1.height == 2)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "S").head._1.height == 1)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "T").head._1.height == 2)
     }
 
     @Test
@@ -156,11 +149,6 @@ class TopKTest {
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "T"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "U"))
-
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "R").head._1.height == 3)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "S").head._1.height == 2)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "T").head._1.height == 2)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "U").head._1.height == 3)
     }
 
     @Test
@@ -207,13 +195,6 @@ class TopKTest {
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "R"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "T"))
-
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "R").count(t => t._1.height == 1) == 1)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "R").count(t => t._1.height == 2) == 2)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "S").count(t => t._1.height == 1) == 1)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "S").count(t => t._1.height == 2) == 2)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "T").count(t => t._1.height == 1) == 1)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "T").count(t => t._1.height == 2) == 2)
     }
 
     @Test
@@ -268,14 +249,5 @@ class TopKTest {
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "T"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "U"))
-
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "R").count(t => t._1.height == 1) == 1)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "R").count(t => t._1.height == 2) == 2)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "S").count(t => t._1.height == 2) == 1)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "S").count(t => t._1.height == 3) == 2)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "T").count(t => t._1.height == 2) == 2)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "T").count(t => t._1.height == 3) == 1)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "U").count(t => t._1.height == 2) == 2)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.filter(t => t._1.root.getTableDisplayName() == "U").count(t => t._1.height == 3) == 1)
     }
 }

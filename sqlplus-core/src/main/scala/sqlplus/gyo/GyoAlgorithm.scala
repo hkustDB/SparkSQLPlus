@@ -160,9 +160,11 @@ class GyoAlgorithm {
         assert(stableStates.nonEmpty)
 
         // terminate if
-        // 1. there is some non-output variables in stable state. e.g., R(A,B) x S(B,C), output = [A,C], and
-        // 2. terminateIfNonFreeConnex is set.
-        if (stableStates.forall(s => s.getRelationalHyperGraph.getEdges().exists(r => r.getNodes().exists(v => !outputVariables.contains(v))))) {
+        // 1. outputVariables.nonEmpty, and
+        // 2. there is some non-output variables in stable state. e.g., R(A,B) x S(B,C), output = [A,C], and
+        // 3. terminateIfNonFreeConnex is set.
+        if (outputVariables.nonEmpty &&
+            stableStates.exists(s => s.getRelationalHyperGraph.getEdges().exists(r => r.getNodes().exists(v => !outputVariables.contains(v))))) {
             isFreeConnex = false
             if (terminateIfNonFreeConnex)
                 return None
@@ -195,10 +197,9 @@ class GyoAlgorithm {
             val rootsAndSubset = finalStates.map(s => (s._1.getForest.getTree(s._1.getRelationalHyperGraph.getEdges().head), s._2)).toList
             Some(GyoResult(rootsAndSubset.map(ras => {
                 val (root, edges, hyperGraph) = convertToJoinTreeWithHyperGraph(ras._1)
-                // connex-subset is empty if the input query is non-free-connex
-                val joinTree = JoinTree(root, edges, if (isFreeConnex) ras._2.intersect(hyperGraph.getEdges()) else Set(), ras._1.getHeight())
+                val joinTree = JoinTree(root, edges, if (outputVariables.nonEmpty) ras._2.intersect(hyperGraph.getEdges()) else Set())
                 (joinTree, hyperGraph)
-            })))
+            }), isFreeConnex))
         } else {
             None
         }

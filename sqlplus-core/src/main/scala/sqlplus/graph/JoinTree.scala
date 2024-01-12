@@ -4,8 +4,9 @@ package sqlplus.graph
  * A joinTree is a set of JoinTreeEdge and a root relation.
  * @param root the root relation
  * @param edges the joinTreeEdges
+ * @param subset the minimal subset(including the root) that covers all the output variables
  */
-class JoinTree(val root: Relation, val edges: Set[JoinTreeEdge], val subset: Set[Relation], val height: Int) extends HyperGraph[Relation, JoinTreeEdge] {
+class JoinTree(val root: Relation, val edges: Set[JoinTreeEdge], val subset: Set[Relation]) extends HyperGraph[Relation, JoinTreeEdge] {
     override def getEdges(): Set[JoinTreeEdge] = edges
 
     /**
@@ -18,11 +19,13 @@ class JoinTree(val root: Relation, val edges: Set[JoinTreeEdge], val subset: Set
         edges.find(e => e.connects(node1, node2)).get
 
     def getRoot(): Relation = root
+
+    def getSubset(): Set[Relation] = subset
 }
 
 object JoinTree {
-    def apply(root: Relation, edges: Set[JoinTreeEdge], subset: Set[Relation], height: Int): JoinTree = {
-        new JoinTree(root, edges, subset, height)
+    def apply(root: Relation, edges: Set[JoinTreeEdge], subset: Set[Relation]): JoinTree = {
+        new JoinTree(root, edges, subset)
     }
 }
 

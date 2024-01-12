@@ -24,9 +24,9 @@ class GyoAlgorithmTest {
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
 
         val result = algorithm.run(hyperGraph, Set(v1, v2, v3, v4), true).get
-        assertTrue(result.joinTreeWithHyperGraphs.size == 3)
+        assertTrue(result.candidates.size == 3)
 
-        val joinTrees = result.joinTreeWithHyperGraphs.map(t => t._1)
+        val joinTrees = result.candidates.map(t => t._1)
         assertTrue(joinTrees.forall(t => t.subset.size == 3))
         assertTrue(joinTrees.forall(t => t.subset.intersect(Set(r1, r2 ,r3)).size == 3))
         joinTrees.foreach(t => {
@@ -53,9 +53,9 @@ class GyoAlgorithmTest {
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
 
         val result = algorithm.run(hyperGraph, Set(v1, v2), true).get
-        assertTrue(result.joinTreeWithHyperGraphs.size == 1)
+        assertTrue(result.candidates.size == 1)
 
-        val joinTrees = result.joinTreeWithHyperGraphs.map(t => t._1)
+        val joinTrees = result.candidates.map(t => t._1)
         assertTrue(joinTrees.forall(t => t.subset.size == 1))
         assertTrue(joinTrees.forall(t => t.subset.head == r1))
         joinTrees.foreach(t => {
@@ -82,9 +82,9 @@ class GyoAlgorithmTest {
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
 
         val result = algorithm.run(hyperGraph, Set(v2, v3), true).get
-        assertTrue(result.joinTreeWithHyperGraphs.size == 1)
+        assertTrue(result.candidates.size == 1)
 
-        val joinTrees = result.joinTreeWithHyperGraphs.map(t => t._1)
+        val joinTrees = result.candidates.map(t => t._1)
         assertTrue(joinTrees.forall(t => t.subset.size == 1))
         assertTrue(joinTrees.forall(t => t.subset.head == r2))
         joinTrees.foreach(t => {
@@ -136,9 +136,9 @@ class GyoAlgorithmTest {
             .addHyperEdge(r4).addHyperEdge(r5)
 
         val result = algorithm.run(hyperGraph, Set(v2, v4, v5), false).get
-        assertTrue(result.joinTreeWithHyperGraphs.size == 3)
+        assertTrue(result.candidates.size == 3)
 
-        val jointrees = result.joinTreeWithHyperGraphs.map(_._1).toSet
+        val jointrees = result.candidates.map(_._1).toSet
         // root must be r2, r3, or r4
         assertTrue(jointrees.count(t => t.root == r2) == 1)
         assertTrue(jointrees.count(t => t.root == r3) == 1)
