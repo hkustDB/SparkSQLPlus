@@ -3,6 +3,7 @@ package sqlplus.parser.ddl;
 import org.apache.calcite.sql.*;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.util.ImmutableNullableList;
+import sqlplus.parser.ddl.constraint.SqlTableConstraint;
 
 import javax.annotation.Nonnull;
 import java.util.ArrayList;
@@ -16,6 +17,8 @@ public class SqlCreateTable extends SqlCreate {
 
     private final SqlNodeList columnList;
 
+    private final List<SqlTableConstraint> tableConstraints;
+
     private final SqlNodeList propertyList;
 
     private final boolean ifNotExists;
@@ -23,11 +26,13 @@ public class SqlCreateTable extends SqlCreate {
     public SqlCreateTable(SqlParserPos pos,
                           SqlIdentifier tableName,
                           SqlNodeList columnList,
+                          List<SqlTableConstraint> tableConstraints,
                           SqlNodeList propertyList,
                           boolean ifNotExists) {
         super(OPERATOR, pos, false, ifNotExists);
         this.tableName = tableName;
         this.columnList = columnList;
+        this.tableConstraints = tableConstraints;
         this.propertyList = propertyList;
         this.ifNotExists = ifNotExists;
     }
@@ -38,6 +43,10 @@ public class SqlCreateTable extends SqlCreate {
 
     public SqlNodeList getColumnList() {
         return columnList;
+    }
+
+    public List<SqlTableConstraint> getTableConstraints() {
+        return tableConstraints;
     }
 
     public SqlNodeList getPropertyList() {
@@ -97,5 +106,6 @@ public class SqlCreateTable extends SqlCreate {
 
     public static class TableCreationContext {
         public List<SqlNode> columnList = new ArrayList<>();
+        public List<SqlTableConstraint> constraints = new ArrayList<>();
     }
 }

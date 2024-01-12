@@ -27,6 +27,21 @@ boolean IfNotExistsOpt() :
     )
 }
 
+void TableColumn(TableCreationContext context) :
+{
+    SqlTableConstraint constraint;
+}
+{
+    (
+        LOOKAHEAD(2)
+        TypedColumn(context)
+    |
+        constraint = TableConstraint() {
+            context.constraints.add(constraint);
+        }
+    )
+}
+
 void TypedColumn(TableCreationContext context) :
 {
     SqlIdentifier name;
@@ -92,7 +107,7 @@ SqlCreate SqlCreateTable(Span s, boolean replace) :
     boolean ifNotExists = false;
     SqlIdentifier tableName;
     SqlNodeList columnList = SqlNodeList.EMPTY;
-
+    List<SqlTableConstraint> constraints = new ArrayList<SqlTableConstraint>();
     SqlNodeList propertyList = SqlNodeList.EMPTY;
     SqlParserPos pos = startPos;
 }
@@ -104,13 +119,14 @@ SqlCreate SqlCreateTable(Span s, boolean replace) :
     tableName = CompoundIdentifier()
     [
         <LPAREN> { pos = getPos(); TableCreationContext ctx = new TableCreationContext();}
-        TypedColumn(ctx)
+        TableColumn(ctx)
         (
-            <COMMA> TypedColumn(ctx)
+            <COMMA> TableColumn(ctx)
         )*
         {
             pos = pos.plus(getPos());
             columnList = new SqlNodeList(ctx.columnList, pos);
+            constraints = ctx.constraints;
         }
         <RPAREN>
     ]
@@ -122,7 +138,53 @@ SqlCreate SqlCreateTable(Span s, boolean replace) :
         return new SqlCreateTable(startPos.plus(getPos()),
                 tableName,
                 columnList,
+                constraints,
                 propertyList,
                 ifNotExists);
+    }
+}
+
+/** Parses a table constraint for CREATE TABLE. */
+SqlTableConstraint TableConstraint() :
+{
+    SqlIdentifier constraintName = null;
+    final SqlLiteral uniqueSpec;
+    final SqlNodeList columns;
+}
+{
+    [ constraintName = ConstraintName() ]
+    uniqueSpec = UniqueSpec()
+    columns = ParenthesizedSimpleIdentifierList()
+    {
+        return new SqlTableConstraint(
+        constraintName,
+        uniqueSpec,
+        columns,
+        getPos());
+    }
+}
+
+SqlIdentifier ConstraintName() :
+{
+    SqlIdentifier constraintName;
+}
+{
+    <CONSTRAINT> constraintName = SimpleIdentifier() {
+        return constraintName;
+    }
+}
+
+SqlLiteral UniqueSpec() :
+{
+    SqlLiteral uniqueSpec;
+}
+{
+    (
+        <PRIMARY> <KEY> {
+            uniqueSpec = SqlUniqueSpec.PRIMARY_KEY.symbol(getPos());
+        }
+    )
+    {
+        return uniqueSpec;
     }
 }

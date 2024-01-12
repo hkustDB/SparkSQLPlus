@@ -27,6 +27,8 @@
     "sqlplus.parser.ddl.SqlCreateTable.TableCreationContext"
     "sqlplus.parser.ddl.SqlTableColumn"
     "sqlplus.parser.ddl.SqlTableOption"
+    "sqlplus.parser.ddl.constraint.SqlTableConstraint"
+    "sqlplus.parser.ddl.constraint.SqlUniqueSpec"
 
     "org.apache.calcite.sql.SqlCreate"
 
