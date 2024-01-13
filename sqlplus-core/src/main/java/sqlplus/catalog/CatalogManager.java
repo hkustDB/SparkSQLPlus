@@ -1,7 +1,5 @@
 package sqlplus.catalog;
 
-import sqlplus.parser.ddl.SqlCreateTable;
-import sqlplus.plan.table.SqlPlusTable;
 import org.apache.calcite.config.CalciteConnectionConfig;
 import org.apache.calcite.config.CalciteConnectionProperty;
 import org.apache.calcite.jdbc.CalciteSchema;
@@ -12,9 +10,12 @@ import org.apache.calcite.schema.Table;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.type.SqlTypeFactoryImpl;
+import sqlplus.parser.ddl.SqlCreateTable;
+import sqlplus.plan.table.SqlPlusTable;
 
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 
 public class CatalogManager {
     private CalciteSchema schema;
@@ -29,12 +30,15 @@ public class CatalogManager {
         catalogReader = new CalciteCatalogReader(schema, Collections.emptyList(), typeFactory, connectionConfig);
     }
 
-    public void register(SqlNodeList nodeList) {
+    public List<SqlPlusTable> register(SqlNodeList nodeList) {
+        List<SqlPlusTable> tables = new ArrayList<>();
         for (SqlNode node : nodeList) {
             SqlCreateTable createTable = (SqlCreateTable) node;
             SqlPlusTable table = new SqlPlusTable(createTable);
             register(table.getTableName(), table);
+            tables.add(table);
         }
+        return tables;
     }
 
     public void register(String tableName, Table table) {
