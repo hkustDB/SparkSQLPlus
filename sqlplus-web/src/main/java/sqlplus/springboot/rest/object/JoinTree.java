@@ -8,6 +8,7 @@ public class JoinTree {
     List<JoinTreeEdge> edges;
     int root;
     List<Integer> subset;
+    int maxFanout;
     List<Comparison> comparisons = new ArrayList<>();
 
     public List<JoinTreeNode> getNodes() {
@@ -40,6 +41,14 @@ public class JoinTree {
 
     public void setSubset(List<Integer> subset) {
         this.subset = subset;
+    }
+
+    public int getMaxFanout() {
+        return maxFanout;
+    }
+
+    public void setMaxFanout(int maxFanout) {
+        this.maxFanout = maxFanout;
     }
 
     public List<Comparison> getComparisons() {

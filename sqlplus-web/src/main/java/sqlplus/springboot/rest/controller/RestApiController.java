@@ -125,6 +125,8 @@ public class RestApiController {
         List<Integer> subset = JavaConverters.setAsJavaSet(joinTree.getSubset()).stream().map(Relation::getRelationId).collect(Collectors.toList());
         result.setSubset(subset);
 
+        result.setMaxFanout(joinTree.getMaxFanout());
+
         List<Comparison> comparisons = JavaConverters.setAsJavaSet(comparisonHyperGraph.getEdges()).stream().map(c -> {
             String op = c.op().getFuncName();
             List<JoinTreeEdge> path = JavaConverters.setAsJavaSet(c.getNodes()).stream()

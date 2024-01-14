@@ -1,6 +1,6 @@
 package sqlplus.convert
 
-import org.junit.Assert.assertTrue
+import org.junit.Assert.{assertEquals, assertTrue}
 import org.junit.Test
 import sqlplus.catalog.CatalogManager
 import sqlplus.expression.VariableManager
@@ -49,6 +49,9 @@ class TopKTest {
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 2)
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "R"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
+
+        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "R").get._1.getMaxFanout())
+        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "S").get._1.getMaxFanout())
     }
 
     @Test
@@ -95,6 +98,10 @@ class TopKTest {
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "R"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "T"))
+
+        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "R").get._1.getMaxFanout())
+        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "S").get._1.getMaxFanout())
+        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "T").get._1.getMaxFanout())
     }
 
     @Test
@@ -149,6 +156,11 @@ class TopKTest {
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "T"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "U"))
+
+        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "R").get._1.getMaxFanout())
+        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "S").get._1.getMaxFanout())
+        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "T").get._1.getMaxFanout())
+        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "U").get._1.getMaxFanout())
     }
 
     @Test
@@ -195,6 +207,13 @@ class TopKTest {
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "R"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "T"))
+
+        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "R" && t._1.getMaxFanout() == 1))
+        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "R" && t._1.getMaxFanout() == 2))
+        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "S" && t._1.getMaxFanout() == 1))
+        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "S" && t._1.getMaxFanout() == 2))
+        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "T" && t._1.getMaxFanout() == 1))
+        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "T" && t._1.getMaxFanout() == 2))
     }
 
     @Test
@@ -249,5 +268,14 @@ class TopKTest {
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "T"))
         assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "U"))
+
+        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "R" && t._1.getMaxFanout() == 2))
+        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "R" && t._1.getMaxFanout() == 3))
+        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "S" && t._1.getMaxFanout() == 1))
+        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "S" && t._1.getMaxFanout() == 2))
+        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "T" && t._1.getMaxFanout() == 2))
+        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "T" && t._1.getMaxFanout() == 1))
+        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "U" && t._1.getMaxFanout() == 2))
+        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "U" && t._1.getMaxFanout() == 1))
     }
 }
