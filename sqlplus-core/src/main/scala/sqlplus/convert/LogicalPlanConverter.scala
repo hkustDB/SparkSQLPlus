@@ -120,13 +120,22 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
         zippedWithDegree.filter(t => t._3 == minDegree).take(limit).map(t => (t._1, t._2))
     }
 
-    def convert(root: RelNode): ConvertResult = {
+    def runAndSelect(root: RelNode, orderBy: String = "degree", desc: Boolean = true, limit: Int = 1): RunResult = {
         val runResult = run(root)
 
-        // select the joinTree and ComparisonHyperGraph with minimum degree
-        val selected = runResult.joinTreesWithComparisonHyperGraph.minBy(t => t._2.getDegree())
+        val selected = orderBy match {
+            case "degree" if !desc =>
+                // select the joinTree and ComparisonHyperGraph with minimum degree
+                runResult.joinTreesWithComparisonHyperGraph.sortBy(t => t._2.getDegree()).take(limit)
+            case "fanout" if !desc =>
+                // select the joinTree and ComparisonHyperGraph with minimum maxFanout
+                runResult.joinTreesWithComparisonHyperGraph.sortBy(t => t._1.getMaxFanout()).take(limit)
+            case "" =>
+                runResult.joinTreesWithComparisonHyperGraph.take(limit)
+        }
 
-        ConvertResult(selected._1, selected._2, runResult.outputVariables, runResult.computations, runResult.isFreeConnex,
+
+        RunResult(selected, runResult.outputVariables, runResult.computations, runResult.isFull, runResult.isFreeConnex,
             runResult.groupByVariables, runResult.aggregations, runResult.optTopK)
     }
 

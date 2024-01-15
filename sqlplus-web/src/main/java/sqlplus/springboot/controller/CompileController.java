@@ -18,7 +18,6 @@ import sqlplus.codegen.SparkSQLPlusExampleCodeGenerator;
 import sqlplus.codegen.SparkSQLPlusExperimentCodeGenerator;
 import sqlplus.compile.CompileResult;
 import sqlplus.compile.SqlPlusCompiler;
-import sqlplus.convert.ConvertResult;
 import sqlplus.convert.LogicalPlanConverter;
 import sqlplus.convert.RunResult;
 import sqlplus.convert.TopK;
@@ -45,6 +44,8 @@ public class CompileController {
 
     private scala.collection.immutable.List<Tuple2<Variable, Expression>> computations = null;
 
+    private boolean isFull = false;
+
     private boolean isFreeConnex = false;
 
     private scala.collection.immutable.List<Variable> groupByVariables = null;
@@ -65,8 +66,6 @@ public class CompileController {
 
     private CompileResult compileResult = null;
 
-    private boolean isFullQuery = true;
-
     @PostMapping("/compile/submit")
     public Result submit(@RequestBody CompileSubmitRequest request) {
         try {
@@ -85,12 +84,13 @@ public class CompileController {
             RunResult runResult = converter.run(logicalPlan);
             outputVariables = runResult.outputVariables();
             computations = runResult.computations();
+            isFull = runResult.isFull();
             isFreeConnex = runResult.isFreeConnex();
             groupByVariables = runResult.groupByVariables();
             aggregations = runResult.aggregations();
             optTopK = runResult.optTopK();
-            isFullQuery = runResult.isFull();
-            if (!isFullQuery) {
+
+            if (!isFull) {
                 // is the query is non-full, we add DISTINCT keyword to SparkSQL explicitly
                 sql = sql.replaceFirst("[s|S][e|E][l|L][e|E][c|C][t|T]", "SELECT DISTINCT");
             }
@@ -221,11 +221,11 @@ public class CompileController {
         Result result = new Result();
         result.setCode(200);
 
-        ConvertResult convertResult = new ConvertResult(
-                candidates.get(request.getIndex())._1,
-                candidates.get(request.getIndex())._2,
+        RunResult runResult = RunResult.buildFromSingleResult(
+                candidates.get(request.getIndex()),
                 outputVariables,
                 computations,
+                isFull,
                 isFreeConnex,
                 groupByVariables,
                 aggregations,
@@ -233,7 +233,7 @@ public class CompileController {
         );
 
         SqlPlusCompiler sqlPlusCompiler = new SqlPlusCompiler(variableManager);
-        compileResult = sqlPlusCompiler.compile(catalogManager, convertResult, false);
+        compileResult = sqlPlusCompiler.compile(catalogManager, runResult, false);
         CodeGenerator codeGenerator = new SparkSQLPlusExampleCodeGenerator(compileResult,
                 "sqlplus.example", "SparkSQLPlusExample");
         StringBuilder builder = new StringBuilder();

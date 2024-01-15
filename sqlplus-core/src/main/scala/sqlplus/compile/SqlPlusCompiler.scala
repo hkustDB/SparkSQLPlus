@@ -2,7 +2,7 @@ package sqlplus.compile
 
 import sqlplus.expression.VariableOrdering._
 import sqlplus.catalog.CatalogManager
-import sqlplus.convert.ConvertResult
+import sqlplus.convert.RunResult
 import sqlplus.expression.{BinaryOperator, ComputeExpression, Expression, LiteralExpression, Operator, SingleVariableExpression, UnaryOperator, Variable, VariableManager}
 import sqlplus.graph.{AggregatedRelation, AuxiliaryRelation, BagRelation, Comparison, Relation, TableScanRelation}
 import sqlplus.plan.table.SqlPlusTable
@@ -12,13 +12,17 @@ import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
 class SqlPlusCompiler(val variableManager: VariableManager) {
-    def compile(catalogManager: CatalogManager, convertResult: ConvertResult, formatResult: Boolean): CompileResult = {
+    def compile(catalogManager: CatalogManager, runResult: RunResult, formatResult: Boolean): CompileResult = {
         // TODO: compilation and codegen for aggregation is unsupported yet.
-        assert(convertResult.aggregations.isEmpty)
+        assert(runResult.aggregations.isEmpty)
+        assert(runResult.joinTreesWithComparisonHyperGraph.size == 1)
+
+        val joinTree = runResult.joinTreesWithComparisonHyperGraph.head._1
+        val comparisonHyperGraph = runResult.joinTreesWithComparisonHyperGraph.head._2
 
         val manager = new RelationVariableNamesManager
         val assigner = new VariableNameAssigner
-        val relations = convertResult.joinTree.getEdges().flatMap(e => List(e.getSrc, e.getDst)).toList
+        val relations = joinTree.getEdges().flatMap(e => List(e.getSrc, e.getDst)).toList
 
         val sourceTableNames = getSourceTableNames(relations)
 
@@ -49,19 +53,19 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
             }
         })
 
-        val finalOutputVariables: List[Variable] = convertResult.outputVariables
+        val finalOutputVariables: List[Variable] = runResult.outputVariables
         val relationStates: Map[Int, RelationState] = relations.map(r => (r.getRelationId(), new RelationState(r))).toMap
         val relationIdToParentId: mutable.HashMap[Int, Int] = mutable.HashMap.empty
         val validRelationIds: mutable.HashSet[Int] = mutable.HashSet.empty[Int]
         relations.foreach(r => validRelationIds.add(r.getRelationId()))
         val matrix = mutable.HashMap.empty[(Int, Int), Boolean].withDefaultValue(false)
-        convertResult.joinTree.getEdges().foreach(edge => {
+        joinTree.getEdges().foreach(edge => {
             if (edge.getSrc != null && edge.getDst != null) {
                 matrix((edge.getSrc.getRelationId(), edge.getDst.getRelationId())) = true
             }
         })
 
-        val comparisonStates: Map[Int, ComparisonState] = convertResult.comparisonHyperGraph.getEdges()
+        val comparisonStates: Map[Int, ComparisonState] = comparisonHyperGraph.getEdges()
             .map(c => (c.getComparisonId(), new ComparisonState(c, variableManager))).toMap
         comparisonStates.values.map(cs => cs.getOperator()).toSet.foreach((op: Operator) => {
             setupActions.append(FunctionDefinitionAction(op.getFuncDefinition()))
@@ -90,7 +94,7 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
                 val longComparisonCount = comparisons.count(cs => cs.getIncidentRelationIds().size > 2)
                 // if the longComparisonCount of a leaf relation < 2, it is a candidate
                 // the root of join tree is irreducible
-                longComparisonCount < 2 && t._1 != convertResult.joinTree.root.getRelationId()
+                longComparisonCount < 2 && t._1 != joinTree.root.getRelationId()
             })
 
             // pick the first reducible relation from candidates
@@ -106,7 +110,7 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
 
             // reduce the reducible relation
             reduceRelation(reducibleRelationState, Some(parentRelationState), joinVariables, incidentComparisonStates, relationStates,
-                convertResult.joinTree.subset, treeLikeArrayTypeParameters, reduceActions, manager, assigner)
+                joinTree.subset, treeLikeArrayTypeParameters, reduceActions, manager, assigner)
             reduceOrder.append(reducibleRelationState)
             existingRelationIds.remove(reducibleRelationId)
             removeRelation(matrix, validRelationIds, reducibleRelationId)
@@ -118,10 +122,10 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
         val lastIncidentComparisonStates = comparisonStates.values.filter(cs => cs.getIncidentRelationIds().contains(lastRelationId)).toList
 
         reduceRelation(lastRelationState, None, List(), lastIncidentComparisonStates, relationStates,
-            convertResult.joinTree.subset, treeLikeArrayTypeParameters, reduceActions, manager, assigner)
+            joinTree.subset, treeLikeArrayTypeParameters, reduceActions, manager, assigner)
 
         // apply enumeration only on relations in connex subset
-        val subsetRelationIds = convertResult.joinTree.subset.map(r => r.getRelationId())
+        val subsetRelationIds = joinTree.subset.map(r => r.getRelationId())
         val subsetReduceOrder = reduceOrder.toList.filter(rs => subsetRelationIds.contains(rs.getRelation().getRelationId()))
 
         val enumerateActions = ListBuffer.empty[EnumerateAction]

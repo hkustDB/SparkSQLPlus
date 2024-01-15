@@ -3,10 +3,7 @@ package sqlplus.springboot.rest.controller;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import scala.collection.JavaConverters;
 import sqlplus.catalog.CatalogManager;
 import sqlplus.convert.LogicalPlanConverter;
@@ -26,17 +23,15 @@ import sqlplus.springboot.rest.object.*;
 import sqlplus.springboot.rest.request.ParseQueryRequest;
 import sqlplus.springboot.rest.response.ParseQueryResponse;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1")
 public class RestApiController {
     @PostMapping("/parse")
-    public Result parseQuery(@RequestBody ParseQueryRequest request) {
+    public Result parseQuery(@RequestBody ParseQueryRequest request,
+                             @RequestParam Optional<String> orderBy, @RequestParam Optional<Boolean> desc, @RequestParam Optional<Integer> limit) {
         try {
             SqlNodeList nodeList = SqlPlusParser.parseDdl(request.getDdl());
             CatalogManager catalogManager = new CatalogManager();
@@ -49,7 +44,7 @@ public class RestApiController {
 
             VariableManager variableManager = new VariableManager();
             LogicalPlanConverter converter = new LogicalPlanConverter(variableManager);
-            RunResult runResult = converter.run(logicalPlan);
+            RunResult runResult = converter.runAndSelect(logicalPlan, orderBy.orElse(""), desc.orElse(false), limit.orElse(Integer.MAX_VALUE));
 
             ParseQueryResponse response = new ParseQueryResponse();
             response.setTables(tables.stream()

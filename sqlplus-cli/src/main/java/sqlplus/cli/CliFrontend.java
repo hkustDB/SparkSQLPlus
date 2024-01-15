@@ -1,16 +1,5 @@
 package sqlplus.cli;
 
-import scala.collection.mutable.StringBuilder;
-import sqlplus.catalog.CatalogManager;
-import sqlplus.codegen.CodeGenerator;
-import sqlplus.codegen.SparkSQLPlusExampleCodeGenerator;
-import sqlplus.compile.CompileResult;
-import sqlplus.compile.SqlPlusCompiler;
-import sqlplus.convert.ConvertResult;
-import sqlplus.convert.LogicalPlanConverter;
-import sqlplus.expression.VariableManager;
-import sqlplus.parser.SqlPlusParser;
-import sqlplus.plan.SqlPlusPlanner;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
@@ -18,6 +7,17 @@ import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.io.FileUtils;
+import scala.collection.mutable.StringBuilder;
+import sqlplus.catalog.CatalogManager;
+import sqlplus.codegen.CodeGenerator;
+import sqlplus.codegen.SparkSQLPlusExampleCodeGenerator;
+import sqlplus.compile.CompileResult;
+import sqlplus.compile.SqlPlusCompiler;
+import sqlplus.convert.LogicalPlanConverter;
+import sqlplus.convert.RunResult;
+import sqlplus.expression.VariableManager;
+import sqlplus.parser.SqlPlusParser;
+import sqlplus.plan.SqlPlusPlanner;
 
 import java.io.File;
 
@@ -81,10 +81,10 @@ public class CliFrontend {
 
             VariableManager variableManager = new VariableManager();
             LogicalPlanConverter converter = new LogicalPlanConverter(variableManager);
-            ConvertResult convertResult = converter.convert(logicalPlan);
+            RunResult runResult = converter.runAndSelect(logicalPlan, "degree", false, 1);
 
             SqlPlusCompiler sqlPlusCompiler = new SqlPlusCompiler(variableManager);
-            CompileResult compileResult = sqlPlusCompiler.compile(catalogManager, convertResult, true);
+            CompileResult compileResult = sqlPlusCompiler.compile(catalogManager, runResult, true);
             CodeGenerator codeGenerator = new SparkSQLPlusExampleCodeGenerator(compileResult, packageName, objectName);
             StringBuilder builder = new StringBuilder();
             codeGenerator.generate(builder);

@@ -159,4 +159,116 @@ public class RestApiControllerTest {
         // isFreeConnex
         assertTrue((Boolean) data.get("freeConnex"));
     }
+
+    @Test
+    public void testParseWithLimit() throws Exception {
+        String ddl = "CREATE TABLE Graph\n" +
+                "(\n" +
+                "    src    INT,\n" +
+                "    dst    INT,\n" +
+                "    rating DECIMAL\n" +
+                ")";
+        String query = "SELECT S.dst                                     AS A,\n" +
+                "       S.src                                     AS B,\n" +
+                "       R.src                                     AS C,\n" +
+                "       T.dst                                     AS D,\n" +
+                "       U.dst                                     AS E,\n" +
+                "       R.rating + S.rating + T.rating + U.rating AS total_rating\n" +
+                "FROM graph R,\n" +
+                "     graph S,\n" +
+                "     graph T,\n" +
+                "     graph U\n" +
+                "WHERE R.dst = S.src\n" +
+                "  AND R.src = T.src\n" +
+                "  AND R.src = U.src\n" +
+                "ORDER BY total_rating DESC limit 5";
+
+        ParseQueryRequest request = new ParseQueryRequest();
+        request.setDdl(ddl);
+        request.setQuery(query);
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        String body = objectMapper.writeValueAsString(request);
+
+        String response = mvc.perform(MockMvcRequestBuilders
+                        .post("http://localhost:8848/api/v1/parse?orderBy=fanout&desc=false&limit=1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andReturn().getResponse().getContentAsString();
+        Result result = objectMapper.readValue(response, Result.class);
+
+        assertEquals(200, result.getCode());
+        Map<String, Object> data = (Map<String, Object>) result.getData();
+
+        // tables
+        List<Map<String, Object>> tables = (List<Map<String, Object>>) data.get("tables");
+        assertEquals(1, tables.size());
+        assertEquals("Graph", tables.get(0).get("name"));
+        assertEquals(3, ((List<String>) tables.get(0).get("columns")).size());
+        assertTrue(((List<String>) tables.get(0).get("columns")).contains("src"));
+        assertTrue(((List<String>) tables.get(0).get("columns")).contains("dst"));
+        assertTrue(((List<String>) tables.get(0).get("columns")).contains("rating"));
+
+        // joinTrees
+        // limit = 1
+        assertEquals(1, ((List<Map<String, Object>>) data.get("joinTrees")).size());
+        // desc is false
+        assertEquals(1, ((List<Map<String, Object>>) data.get("joinTrees")).get(0).get("maxFanout"));
+    }
+
+    @Test
+    public void testParseWithoutLimit() throws Exception {
+        String ddl = "CREATE TABLE Graph\n" +
+                "(\n" +
+                "    src    INT,\n" +
+                "    dst    INT,\n" +
+                "    rating DECIMAL\n" +
+                ")";
+        String query = "SELECT S.dst                                     AS A,\n" +
+                "       S.src                                     AS B,\n" +
+                "       R.src                                     AS C,\n" +
+                "       T.dst                                     AS D,\n" +
+                "       U.dst                                     AS E,\n" +
+                "       R.rating + S.rating + T.rating + U.rating AS total_rating\n" +
+                "FROM graph R,\n" +
+                "     graph S,\n" +
+                "     graph T,\n" +
+                "     graph U\n" +
+                "WHERE R.dst = S.src\n" +
+                "  AND R.src = T.src\n" +
+                "  AND R.src = U.src\n" +
+                "ORDER BY total_rating DESC limit 5";
+
+        ParseQueryRequest request = new ParseQueryRequest();
+        request.setDdl(ddl);
+        request.setQuery(query);
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        String body = objectMapper.writeValueAsString(request);
+
+        String response = mvc.perform(MockMvcRequestBuilders
+                        .post("http://localhost:8848/api/v1/parse?orderBy=fanout")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andReturn().getResponse().getContentAsString();
+        Result result = objectMapper.readValue(response, Result.class);
+
+        assertEquals(200, result.getCode());
+        Map<String, Object> data = (Map<String, Object>) result.getData();
+
+        // tables
+        List<Map<String, Object>> tables = (List<Map<String, Object>>) data.get("tables");
+        assertEquals(1, tables.size());
+        assertEquals("Graph", tables.get(0).get("name"));
+        assertEquals(3, ((List<String>) tables.get(0).get("columns")).size());
+        assertTrue(((List<String>) tables.get(0).get("columns")).contains("src"));
+        assertTrue(((List<String>) tables.get(0).get("columns")).contains("dst"));
+        assertTrue(((List<String>) tables.get(0).get("columns")).contains("rating"));
+
+        // joinTrees
+        // no limit
+        assertEquals(12, ((List<Map<String, Object>>) data.get("joinTrees")).size());
+        // desc is false by default
+        assertEquals(1, ((List<Map<String, Object>>) data.get("joinTrees")).get(0).get("maxFanout"));
+    }
 }
