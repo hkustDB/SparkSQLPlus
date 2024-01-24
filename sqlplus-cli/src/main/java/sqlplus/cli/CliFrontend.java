@@ -80,7 +80,7 @@ public class CliFrontend {
             RelNode logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode);
 
             VariableManager variableManager = new VariableManager();
-            LogicalPlanConverter converter = new LogicalPlanConverter(variableManager);
+            LogicalPlanConverter converter = new LogicalPlanConverter(variableManager, catalogManager);
             RunResult runResult = converter.runAndSelect(logicalPlan, "degree", false, 1);
 
             SqlPlusCompiler sqlPlusCompiler = new SqlPlusCompiler(variableManager);

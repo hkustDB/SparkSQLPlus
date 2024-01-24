@@ -15,10 +15,10 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
     def compile(catalogManager: CatalogManager, runResult: RunResult, formatResult: Boolean): CompileResult = {
         // TODO: compilation and codegen for aggregation is unsupported yet.
         assert(runResult.aggregations.isEmpty)
-        assert(runResult.joinTreesWithComparisonHyperGraph.size == 1)
+        assert(runResult.candidates.size == 1)
 
-        val joinTree = runResult.joinTreesWithComparisonHyperGraph.head._1
-        val comparisonHyperGraph = runResult.joinTreesWithComparisonHyperGraph.head._2
+        val joinTree = runResult.candidates.head._1
+        val comparisonHyperGraph = runResult.candidates.head._2
 
         val manager = new RelationVariableNamesManager
         val assigner = new VariableNameAssigner

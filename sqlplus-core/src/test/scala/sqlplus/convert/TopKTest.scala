@@ -38,7 +38,7 @@ class TopKTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         val runResult = converter.run(logicalPlan)
 
         assertTrue(runResult.isFull)
@@ -46,12 +46,12 @@ class TopKTest {
         assertTrue(runResult.groupByVariables.isEmpty)
         assertTrue(runResult.aggregations.isEmpty)
 
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 2)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "R"))
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
+        assertTrue(runResult.candidates.size == 2)
+        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "R"))
+        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "S"))
 
-        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "R").get._1.getMaxFanout())
-        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "S").get._1.getMaxFanout())
+        assertEquals(1, runResult.candidates.find(t => t._1.root.getTableDisplayName() == "R").get._1.getMaxFanout())
+        assertEquals(1, runResult.candidates.find(t => t._1.root.getTableDisplayName() == "S").get._1.getMaxFanout())
     }
 
     @Test
@@ -86,7 +86,7 @@ class TopKTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         val runResult = converter.run(logicalPlan)
 
         assertTrue(runResult.isFull)
@@ -94,14 +94,14 @@ class TopKTest {
         assertTrue(runResult.groupByVariables.isEmpty)
         assertTrue(runResult.aggregations.isEmpty)
 
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 3)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "R"))
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "T"))
+        assertTrue(runResult.candidates.size == 3)
+        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "R"))
+        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "S"))
+        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "T"))
 
-        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "R").get._1.getMaxFanout())
-        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "S").get._1.getMaxFanout())
-        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "T").get._1.getMaxFanout())
+        assertEquals(1, runResult.candidates.find(t => t._1.root.getTableDisplayName() == "R").get._1.getMaxFanout())
+        assertEquals(2, runResult.candidates.find(t => t._1.root.getTableDisplayName() == "S").get._1.getMaxFanout())
+        assertEquals(1, runResult.candidates.find(t => t._1.root.getTableDisplayName() == "T").get._1.getMaxFanout())
     }
 
     @Test
@@ -143,7 +143,7 @@ class TopKTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         val runResult = converter.run(logicalPlan)
 
         assertTrue(runResult.isFull)
@@ -151,16 +151,16 @@ class TopKTest {
         assertTrue(runResult.groupByVariables.isEmpty)
         assertTrue(runResult.aggregations.isEmpty)
 
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 4)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "R"))
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "T"))
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "U"))
+        assertTrue(runResult.candidates.size == 4)
+        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "R"))
+        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "S"))
+        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "T"))
+        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "U"))
 
-        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "R").get._1.getMaxFanout())
-        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "S").get._1.getMaxFanout())
-        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "T").get._1.getMaxFanout())
-        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.find(t => t._1.root.getTableDisplayName() == "U").get._1.getMaxFanout())
+        assertEquals(1, runResult.candidates.find(t => t._1.root.getTableDisplayName() == "R").get._1.getMaxFanout())
+        assertEquals(2, runResult.candidates.find(t => t._1.root.getTableDisplayName() == "S").get._1.getMaxFanout())
+        assertEquals(2, runResult.candidates.find(t => t._1.root.getTableDisplayName() == "T").get._1.getMaxFanout())
+        assertEquals(1, runResult.candidates.find(t => t._1.root.getTableDisplayName() == "U").get._1.getMaxFanout())
     }
 
     @Test
@@ -195,7 +195,7 @@ class TopKTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         val runResult = converter.run(logicalPlan)
 
         assertTrue(runResult.isFull)
@@ -203,17 +203,17 @@ class TopKTest {
         assertTrue(runResult.groupByVariables.isEmpty)
         assertTrue(runResult.aggregations.isEmpty)
 
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 9)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "R"))
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "T"))
+        assertTrue(runResult.candidates.size == 9)
+        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "R"))
+        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "S"))
+        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "T"))
 
-        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "R" && t._1.getMaxFanout() == 1))
-        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "R" && t._1.getMaxFanout() == 2))
-        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "S" && t._1.getMaxFanout() == 1))
-        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "S" && t._1.getMaxFanout() == 2))
-        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "T" && t._1.getMaxFanout() == 1))
-        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "T" && t._1.getMaxFanout() == 2))
+        assertEquals(2, runResult.candidates.count(t => t._1.root.getTableDisplayName() == "R" && t._1.getMaxFanout() == 1))
+        assertEquals(1, runResult.candidates.count(t => t._1.root.getTableDisplayName() == "R" && t._1.getMaxFanout() == 2))
+        assertEquals(2, runResult.candidates.count(t => t._1.root.getTableDisplayName() == "S" && t._1.getMaxFanout() == 1))
+        assertEquals(1, runResult.candidates.count(t => t._1.root.getTableDisplayName() == "S" && t._1.getMaxFanout() == 2))
+        assertEquals(2, runResult.candidates.count(t => t._1.root.getTableDisplayName() == "T" && t._1.getMaxFanout() == 1))
+        assertEquals(1, runResult.candidates.count(t => t._1.root.getTableDisplayName() == "T" && t._1.getMaxFanout() == 2))
     }
 
     @Test
@@ -255,7 +255,7 @@ class TopKTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         val runResult = converter.run(logicalPlan)
 
         assertTrue(runResult.isFull)
@@ -263,19 +263,19 @@ class TopKTest {
         assertTrue(runResult.groupByVariables.isEmpty)
         assertTrue(runResult.aggregations.isEmpty)
 
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.size == 12)
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "R"))
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "S"))
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "T"))
-        assertTrue(runResult.joinTreesWithComparisonHyperGraph.exists(t => t._1.root.getTableDisplayName() == "U"))
+        assertTrue(runResult.candidates.size == 12)
+        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "R"))
+        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "S"))
+        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "T"))
+        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "U"))
 
-        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "R" && t._1.getMaxFanout() == 2))
-        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "R" && t._1.getMaxFanout() == 3))
-        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "S" && t._1.getMaxFanout() == 1))
-        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "S" && t._1.getMaxFanout() == 2))
-        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "T" && t._1.getMaxFanout() == 2))
-        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "T" && t._1.getMaxFanout() == 1))
-        assertEquals(2, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "U" && t._1.getMaxFanout() == 2))
-        assertEquals(1, runResult.joinTreesWithComparisonHyperGraph.count(t => t._1.root.getTableDisplayName() == "U" && t._1.getMaxFanout() == 1))
+        assertEquals(2, runResult.candidates.count(t => t._1.root.getTableDisplayName() == "R" && t._1.getMaxFanout() == 2))
+        assertEquals(1, runResult.candidates.count(t => t._1.root.getTableDisplayName() == "R" && t._1.getMaxFanout() == 3))
+        assertEquals(2, runResult.candidates.count(t => t._1.root.getTableDisplayName() == "S" && t._1.getMaxFanout() == 1))
+        assertEquals(1, runResult.candidates.count(t => t._1.root.getTableDisplayName() == "S" && t._1.getMaxFanout() == 2))
+        assertEquals(2, runResult.candidates.count(t => t._1.root.getTableDisplayName() == "T" && t._1.getMaxFanout() == 2))
+        assertEquals(1, runResult.candidates.count(t => t._1.root.getTableDisplayName() == "T" && t._1.getMaxFanout() == 1))
+        assertEquals(2, runResult.candidates.count(t => t._1.root.getTableDisplayName() == "U" && t._1.getMaxFanout() == 2))
+        assertEquals(1, runResult.candidates.count(t => t._1.root.getTableDisplayName() == "U" && t._1.getMaxFanout() == 1))
     }
 }

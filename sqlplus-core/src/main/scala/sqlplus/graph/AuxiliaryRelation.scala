@@ -1,9 +1,8 @@
 package sqlplus.graph
 
-import AuxiliaryRelation.createFrom
 import sqlplus.expression.Variable
 
-class AuxiliaryRelation(val tableName: String, val variables: List[Variable], val supportingRelation: Relation, val tableDisplayName: String) extends Relation {
+class AuxiliaryRelation(val tableName: String, val variables: List[Variable], val supportingRelation: Relation, val tableDisplayName: String, val primaryKeys: Set[Variable]) extends Relation {
     override def getTableName(): String = tableName
 
     override def getVariableList(): List[Variable] = variables
@@ -14,6 +13,10 @@ class AuxiliaryRelation(val tableName: String, val variables: List[Variable], va
     }
 
     override def getTableDisplayName(): String = tableDisplayName
+
+    override def getPrimaryKeys(): Set[Variable] = primaryKeys
+
+    override def replaceVariables(map: Map[Variable, Variable]): Relation = throw new UnsupportedOperationException()
 }
 
 object AuxiliaryRelation {
@@ -27,6 +30,7 @@ object AuxiliaryRelation {
         val name = s"[${supportingRelation.getTableName()}]"
         val displayName = s"[${supportingRelation.getTableDisplayName()}]"
         assert(remainVariables.forall(v => supportingRelation.getNodes().contains(v)))
-        new AuxiliaryRelation(name, remainVariables, supportingRelation, displayName)
+        val primaryKeys: Set[Variable] = if (supportingRelation.getPrimaryKeys().subsetOf(remainVariables.toSet)) supportingRelation.getPrimaryKeys() else Set.empty
+        new AuxiliaryRelation(name, remainVariables, supportingRelation, displayName, primaryKeys)
     }
 }

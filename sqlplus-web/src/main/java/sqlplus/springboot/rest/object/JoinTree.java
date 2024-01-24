@@ -10,6 +10,7 @@ public class JoinTree {
     List<Integer> subset;
     int maxFanout;
     List<Comparison> comparisons = new ArrayList<>();
+    List<List<String>> extraEqualConditions = new ArrayList<>();
 
     public List<JoinTreeNode> getNodes() {
         return nodes;
@@ -57,5 +58,13 @@ public class JoinTree {
 
     public void setComparisons(List<Comparison> comparisons) {
         this.comparisons = comparisons;
+    }
+
+    public List<List<String>> getExtraEqualConditions() {
+        return extraEqualConditions;
+    }
+
+    public void setExtraEqualConditions(List<List<String>> extraEqualConditions) {
+        this.extraEqualConditions = extraEqualConditions;
     }
 }

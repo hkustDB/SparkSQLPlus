@@ -54,7 +54,7 @@ public class CompileController {
 
     private scala.Option<TopK> optTopK = null;
 
-    private List<Tuple2<JoinTree, ComparisonHyperGraph>> candidates = null;
+    private List<Tuple3<JoinTree, ComparisonHyperGraph, scala.collection.immutable.List<Tuple2<Variable, Variable>>>> candidates = null;
 
     private CatalogManager catalogManager = null;
 
@@ -80,7 +80,7 @@ public class CompileController {
             RelNode logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode);
 
             variableManager = new VariableManager();
-            LogicalPlanConverter converter = new LogicalPlanConverter(variableManager);
+            LogicalPlanConverter converter = new LogicalPlanConverter(variableManager, catalogManager);
             RunResult runResult = converter.run(logicalPlan);
             outputVariables = runResult.outputVariables();
             computations = runResult.computations();
@@ -95,8 +95,7 @@ public class CompileController {
                 sql = sql.replaceFirst("[s|S][e|E][l|L][e|E][c|C][t|T]", "SELECT DISTINCT");
             }
 
-            candidates = scala.collection.JavaConverters.seqAsJavaList(
-                    converter.candidatesWithLimit(runResult.joinTreesWithComparisonHyperGraph(), 4));
+            candidates = scala.collection.JavaConverters.seqAsJavaList(converter.candidatesWithLimit(runResult.candidates(), 4));
             return mkSubmitResult(candidates);
         } catch (SqlParseException e) {
             throw new RuntimeException(e);
@@ -114,13 +113,13 @@ public class CompileController {
         tables = scala.collection.JavaConverters.asScalaBuffer(sourceTables).toList();
     }
 
-    private Result mkSubmitResult(List<Tuple2<JoinTree, ComparisonHyperGraph>> candidates) {
+    private Result mkSubmitResult(List<Tuple3<JoinTree, ComparisonHyperGraph, scala.collection.immutable.List<Tuple2<Variable, Variable>>>> candidates) {
         Result result = new Result();
         result.setCode(200);
         CompileSubmitResponse response = new CompileSubmitResponse();
         response.setCandidates(candidates.stream().map(tuple -> {
             Candidate candidate = new Candidate();
-            List<Relation> relations = extractRelations(tuple._1);
+            List<Relation> relations = extractRelations(tuple._1());
             List<BagRelation> bagRelations = relations.stream().filter(r -> r instanceof BagRelation).map(r -> (BagRelation)r).collect(Collectors.toList());
             // assign new name to bag relations
             Map<String, String> bagRelationNames = new HashMap<>();
@@ -130,8 +129,8 @@ public class CompileController {
                 suffix += 1;
             }
 
-            Tree tree = Tree.fromJoinTree(tuple._1, bagRelationNames);
-            Set<JoinTreeEdge> joinTreeEdges = scala.collection.JavaConverters.setAsJavaSet(tuple._1.getEdges());
+            Tree tree = Tree.fromJoinTree(tuple._1(), bagRelationNames);
+            Set<JoinTreeEdge> joinTreeEdges = scala.collection.JavaConverters.setAsJavaSet(tuple._1().getEdges());
             List<String> joinTreeEdgeStrings = new ArrayList<>();
             Map<JoinTreeEdge, String> joinTreeEdgeToStringMap = new HashMap<>();
 
@@ -141,7 +140,7 @@ public class CompileController {
                 joinTreeEdgeToStringMap.put(e, s);
             });
             List<String> sortedEdgeStrings = joinTreeEdgeStrings.stream().sorted().collect(Collectors.toList());
-            HyperGraph hyperGraph = HyperGraph.fromComparisonHyperGraphAndRelations(tuple._2, sortedEdgeStrings, joinTreeEdgeToStringMap);
+            HyperGraph hyperGraph = HyperGraph.fromComparisonHyperGraphAndRelations(tuple._2(), sortedEdgeStrings, joinTreeEdgeToStringMap);
 
             Map<String, Object> bags = new HashMap<>();
             bagRelations.forEach(b -> visitBagRelation(b, bagRelationNames, bags));

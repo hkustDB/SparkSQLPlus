@@ -14,14 +14,16 @@ class TpchQueriesTest {
           |    n_nationkey INTEGER,
           |    n_name      VARCHAR,
           |    n_regionkey INTEGER,
-          |    n_comment   VARCHAR
+          |    n_comment   VARCHAR,
+          |    PRIMARY KEY (n_nationkey)
           |);
           |
           |CREATE TABLE region
           |(
           |    r_regionkey INTEGER,
           |    r_name      VARCHAR,
-          |    r_comment   VARCHAR
+          |    r_comment   VARCHAR,
+          |    PRIMARY KEY (r_regionkey)
           |);
           |
           |CREATE TABLE part
@@ -34,7 +36,8 @@ class TpchQueriesTest {
           |    p_size        INTEGER,
           |    p_container   VARCHAR,
           |    p_retailprice DECIMAL,
-          |    p_comment     VARCHAR
+          |    p_comment     VARCHAR,
+          |    PRIMARY KEY (p_partkey)
           |);
           |
           |CREATE TABLE supplier
@@ -45,7 +48,8 @@ class TpchQueriesTest {
           |    s_nationkey INTEGER,
           |    s_phone     VARCHAR,
           |    s_acctbal   DECIMAL,
-          |    s_comment   VARCHAR
+          |    s_comment   VARCHAR,
+          |    PRIMARY KEY (s_suppkey)
           |);
           |
           |CREATE TABLE partsupp
@@ -54,7 +58,8 @@ class TpchQueriesTest {
           |    ps_suppkey    INTEGER,
           |    ps_availqty   INTEGER,
           |    ps_supplycost DECIMAL,
-          |    ps_comment    VARCHAR
+          |    ps_comment    VARCHAR,
+          |    PRIMARY KEY (ps_partkey, ps_suppkey)
           |);
           |
           |CREATE TABLE customer
@@ -66,7 +71,8 @@ class TpchQueriesTest {
           |    c_phone      VARCHAR,
           |    c_acctbal    DECIMAL,
           |    c_mktsegment VARCHAR,
-          |    c_comment    VARCHAR
+          |    c_comment    VARCHAR,
+          |    PRIMARY KEY (c_custkey)
           |);
           |
           |CREATE TABLE orders
@@ -79,7 +85,8 @@ class TpchQueriesTest {
           |    o_orderpriority VARCHAR,
           |    o_clerk         VARCHAR,
           |    o_shippriority  INTEGER,
-          |    o_comment       VARCHAR
+          |    o_comment       VARCHAR,
+          |    PRIMARY KEY (o_orderkey)
           |);
           |
           |CREATE TABLE lineitem
@@ -99,7 +106,8 @@ class TpchQueriesTest {
           |    l_receiptdate   DATE,
           |    l_shipinstruct  VARCHAR,
           |    l_shipmode      VARCHAR,
-          |    l_comment       VARCHAR
+          |    l_comment       VARCHAR,
+          |    PRIMARY KEY (l_orderkey, l_linenumber)
           |);
           |""".stripMargin
 
@@ -129,7 +137,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -156,7 +164,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -206,7 +214,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -236,7 +244,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -274,7 +282,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -309,7 +317,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -332,7 +340,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -372,7 +380,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -417,7 +425,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -454,7 +462,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -490,7 +498,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -516,7 +524,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -555,7 +563,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -582,7 +590,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -638,7 +646,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -679,7 +687,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -724,7 +732,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -752,7 +760,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -804,7 +812,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 
@@ -837,7 +845,7 @@ class TpchQueriesTest {
         val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
-        val converter = new LogicalPlanConverter(variableManager)
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
         converter.run(logicalPlan)
     }
 }

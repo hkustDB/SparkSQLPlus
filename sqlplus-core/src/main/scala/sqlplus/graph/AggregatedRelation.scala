@@ -17,4 +17,11 @@ class AggregatedRelation(val tableName: String, val variables: List[Variable],
     }
 
     override def getTableDisplayName(): String = tableDisplayName
+
+    override def getPrimaryKeys(): Set[Variable] = Set(variables.head)
+
+    override def replaceVariables(map: Map[Variable, Variable]): Relation = {
+        val newVariables = variables.map(v => if (map.contains(v)) map(v) else v)
+        new AggregatedRelation(tableName, newVariables, group, func, tableDisplayName)
+    }
 }

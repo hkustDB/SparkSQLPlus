@@ -32,6 +32,10 @@ abstract class Relation extends HyperEdge[Variable] {
     }
 
     def getVariableList(): List[Variable]
+
+    def getPrimaryKeys(): Set[Variable]
+
+    def replaceVariables(map: Map[Variable, Variable]): Relation
 }
 
 object Relation {

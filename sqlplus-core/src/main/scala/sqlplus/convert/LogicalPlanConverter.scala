@@ -5,10 +5,12 @@ import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.logical._
 import org.apache.calcite.rex.{RexCall, RexInputRef, RexLiteral, RexNode}
 import org.apache.calcite.util.{NlsString, Sarg}
+import sqlplus.catalog.CatalogManager
 import sqlplus.expression._
 import sqlplus.ghd.GhdAlgorithm
 import sqlplus.graph._
 import sqlplus.gyo.GyoAlgorithm
+import sqlplus.plan.table.SqlPlusTable
 import sqlplus.types._
 import sqlplus.utils.DisjointSet
 
@@ -22,7 +24,7 @@ import scala.collection.mutable.{ArrayBuffer, ListBuffer}
  * Select the join tree and its ComparisonHyperGraph with minimum degree.
  *
  */
-class LogicalPlanConverter(val variableManager: VariableManager) {
+class LogicalPlanConverter(val variableManager: VariableManager, val catalogManager: CatalogManager) {
     val gyo: GyoAlgorithm = new GyoAlgorithm
     val ghd: GhdAlgorithm = new GhdAlgorithm
 
@@ -39,33 +41,36 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
         val optTopK = context.optTopK
         val relationalHyperGraph = relations.foldLeft(RelationalHyperGraph.EMPTY)((g, r) => g.addHyperEdge(r))
 
-        val optGyoResult = if (aggregations.isEmpty) {
+        val gyoResults = if (aggregations.isEmpty) {
             // non-aggregation query, try to find a jointree with requiredVariables at the top
             // if the query is non-free-connex, terminate and use GHD instead
-            gyo.run(relationalHyperGraph, requiredVariables, true)
+            gyo.run(variableManager, relationalHyperGraph, requiredVariables, true)
         } else {
             // aggregation query, try to find a jointree with groupByVariables at the top
             // if the query is non-free-connex but acyclic, find a jointree such that groupByVariables are closed to the root
             // if the query is cyclic, terminate and use GHD instead
-            gyo.run(relationalHyperGraph, groupByVariables.toSet, false)
+            gyo.run(variableManager, relationalHyperGraph, groupByVariables.toSet, false)
         }
 
-        val (candidates, isFreeConnex) = if (optGyoResult.nonEmpty) {
-            (optGyoResult.get.candidates, optGyoResult.get.isFreeConnex)
+        val (candidatesFromResults, isFreeConnex) = if (gyoResults.nonEmpty) {
+            // drop the non-free-connex ones if some results are free-connex
+            val filteredGyoResults = if (gyoResults.exists(r => r.isFreeConnex)) gyoResults.filter(r => r.isFreeConnex) else gyoResults
+            // extraEqualConditions are associated with each joinTree and comparison hyperGraph
+            (filteredGyoResults.flatMap(r => r.candidates.map(t => (t._1, t._2, r.extraEqualConditions))), filteredGyoResults.head.isFreeConnex)
         } else {
             if (aggregations.isEmpty) {
                 // non-aggregation query, try to find a ghd with requiredVariables at the top
-                (ghd.run(relationalHyperGraph, requiredVariables).candidates, false)
+                (ghd.run(relationalHyperGraph, requiredVariables).candidates.map(t => (t._1, t._2, List.empty)), false)
             } else {
                 // aggregation query, try to find a ghd with groupByVariables at the top
-                (ghd.run(relationalHyperGraph, groupByVariables.toSet).candidates, false)
+                (ghd.run(relationalHyperGraph, groupByVariables.toSet).candidates.map(t => (t._1, t._2, List.empty)), false)
             }
         }
 
-        // construct a ComparisonHyperGraph for each join tree, the ComparisonHyperGraph has the minimum degree
-        val joinTreesWithComparisonHyperGraph: List[(JoinTree, ComparisonHyperGraph)] = candidates.flatMap(t => {
+        val candidates: List[(JoinTree, ComparisonHyperGraph, List[(Variable, Variable)])] = candidatesFromResults.flatMap(t => {
             val joinTree = t._1
             val hyperGraph = t._2
+            val extraEqualConditions = t._3
             val comparisonHyperEdges: List[Comparison] = conditions.map({
                 case LessThanCondition(leftOperand, rightOperand) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, leftOperand, rightOperand).toSet
@@ -106,18 +111,18 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
             // joinTreesWithComparisonHyperGraph is a candidate(for selection of minimum degree)
             // only when the comparisonHyperGraph is berge-acyclic
             if (comparisonHyperGraph.isBergeAcyclic())
-                List((joinTree, comparisonHyperGraph))
+                List((joinTree, comparisonHyperGraph, extraEqualConditions))
             else
                 List.empty
         })
 
-        RunResult(joinTreesWithComparisonHyperGraph, outputVariables, computations, isFull, isFreeConnex, groupByVariables, aggregations, optTopK)
+        RunResult(candidates, outputVariables, computations, isFull, isFreeConnex, groupByVariables, aggregations, optTopK)
     }
 
-    def candidatesWithLimit(list: List[(JoinTree, ComparisonHyperGraph)], limit: Int): List[(JoinTree, ComparisonHyperGraph)] = {
-        val zippedWithDegree = list.map(t => (t._1, t._2, t._2.getDegree()))
-        val minDegree = zippedWithDegree.map(t => t._3).min
-        zippedWithDegree.filter(t => t._3 == minDegree).take(limit).map(t => (t._1, t._2))
+    def candidatesWithLimit(list: List[(JoinTree, ComparisonHyperGraph, List[(Variable, Variable)])], limit: Int): List[(JoinTree, ComparisonHyperGraph, List[(Variable, Variable)])] = {
+        val zippedWithDegree = list.map(t => (t._1, t._2, t._3, t._2.getDegree()))
+        val minDegree = zippedWithDegree.map(t => t._4).min
+        zippedWithDegree.filter(t => t._4 == minDegree).take(limit).map(t => (t._1, t._2, t._3))
     }
 
     def runAndSelect(root: RelNode, orderBy: String = "degree", desc: Boolean = true, limit: Int = 1): RunResult = {
@@ -126,14 +131,13 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
         val selected = orderBy match {
             case "degree" if !desc =>
                 // select the joinTree and ComparisonHyperGraph with minimum degree
-                runResult.joinTreesWithComparisonHyperGraph.sortBy(t => t._2.getDegree()).take(limit)
+                runResult.candidates.sortBy(t => t._2.getDegree()).take(limit)
             case "fanout" if !desc =>
                 // select the joinTree and ComparisonHyperGraph with minimum maxFanout
-                runResult.joinTreesWithComparisonHyperGraph.sortBy(t => t._1.getMaxFanout()).take(limit)
+                runResult.candidates.sortBy(t => t._1.getMaxFanout()).take(limit)
             case "" =>
-                runResult.joinTreesWithComparisonHyperGraph.take(limit)
+                runResult.candidates.take(limit)
         }
-
 
         RunResult(selected, runResult.outputVariables, runResult.computations, runResult.isFull, runResult.isFreeConnex,
             runResult.groupByVariables, runResult.aggregations, runResult.optTopK)
@@ -423,10 +427,14 @@ class LogicalPlanConverter(val variableManager: VariableManager) {
         val tableName = logicalTableScan.getTable.getQualifiedName.head
         val variables = variableList.slice(offset, offset + logicalTableScan.getRowType.getFieldCount)
 
+        val table = catalogManager.getSchema.getTable(tableName, false).getTable.asInstanceOf[SqlPlusTable]
+        // get index of primary keys and map the keys to variables
+        val primaryKeys = table.getPrimaryKeys.map(k => table.getTableColumnNames.indexOf(k)).map(variables).toSet
+
         if (logicalTableScan.getHints.nonEmpty) {
-            List(new TableScanRelation(tableName, variables, logicalTableScan.getHints.get(0).kvOptions.get("alias")))
+            List(new TableScanRelation(tableName, variables, logicalTableScan.getHints.get(0).kvOptions.get("alias"), primaryKeys))
         } else {
-            List(new TableScanRelation(tableName, variables, tableName))
+            List(new TableScanRelation(tableName, variables, tableName, primaryKeys))
         }
     }
 

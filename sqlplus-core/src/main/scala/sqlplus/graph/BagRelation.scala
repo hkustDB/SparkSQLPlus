@@ -20,6 +20,10 @@ class BagRelation(bag: Set[Relation]) extends Relation {
         val columns = variableList.map(n => n.name + ":" + n.dataType).mkString("(", ",", ")")
         s"BagRelation[id=${getRelationId()}][internal=$internal][cols=$columns]"
     }
+
+    override def getPrimaryKeys(): Set[Variable] = Set.empty
+
+    override def replaceVariables(map: Map[Variable, Variable]): Relation = throw new UnsupportedOperationException()
 }
 
 object BagRelation {

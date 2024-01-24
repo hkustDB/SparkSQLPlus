@@ -4,6 +4,7 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.springframework.web.bind.annotation.*;
+import scala.Tuple2;
 import scala.collection.JavaConverters;
 import sqlplus.catalog.CatalogManager;
 import sqlplus.convert.LogicalPlanConverter;
@@ -43,7 +44,7 @@ public class RestApiController {
             RelNode logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode);
 
             VariableManager variableManager = new VariableManager();
-            LogicalPlanConverter converter = new LogicalPlanConverter(variableManager);
+            LogicalPlanConverter converter = new LogicalPlanConverter(variableManager, catalogManager);
             RunResult runResult = converter.runAndSelect(logicalPlan, orderBy.orElse(""), desc.orElse(false), limit.orElse(Integer.MAX_VALUE));
 
             ParseQueryResponse response = new ParseQueryResponse();
@@ -51,8 +52,8 @@ public class RestApiController {
                     .map(t -> new Table(t.getTableName(), Arrays.stream(t.getTableColumnNames()).collect(Collectors.toList())))
                     .collect(Collectors.toList()));
 
-            List<JoinTree> joinTrees = JavaConverters.seqAsJavaList(runResult.joinTreesWithComparisonHyperGraph()).stream()
-                    .map(t -> buildJoinTree(t._1, t._2))
+            List<JoinTree> joinTrees = JavaConverters.seqAsJavaList(runResult.candidates()).stream()
+                    .map(t -> buildJoinTree(t._1(), t._2(), t._3()))
                     .collect(Collectors.toList());
             response.setJoinTrees(joinTrees);
 
@@ -88,7 +89,7 @@ public class RestApiController {
         }
     }
 
-    private JoinTree buildJoinTree(sqlplus.graph.JoinTree joinTree, sqlplus.graph.ComparisonHyperGraph comparisonHyperGraph) {
+    private JoinTree buildJoinTree(sqlplus.graph.JoinTree joinTree, ComparisonHyperGraph comparisonHyperGraph, scala.collection.immutable.List<Tuple2<Variable, Variable>> extra) {
         JoinTree result = new JoinTree();
         Set<sqlplus.graph.JoinTreeEdge> joinTreeEdges = JavaConverters.setAsJavaSet(joinTree.edges());
         Set<Relation> relations = new HashSet<>();
@@ -130,6 +131,11 @@ public class RestApiController {
             return new Comparison(op, path, c.left().format(), c.right().format());
         }).collect(Collectors.toList());
         result.setComparisons(comparisons);
+
+        List<List<String>> extraEqualConditions = JavaConverters.seqAsJavaList(extra).stream()
+                .map(t -> Arrays.asList(t._1().name(), t._2().name()))
+                .collect(Collectors.toList());
+        result.setExtraEqualConditions(extraEqualConditions);
 
         return result;
     }
