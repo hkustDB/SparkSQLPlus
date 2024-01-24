@@ -49,11 +49,13 @@ class ExpressionTest {
         val stringLitExpr = StringLiteralExpression("Hello,World!")
         val intLitExpr = IntLiteralExpression(42)
         val doubleLitExpr = DoubleLiteralExpression(37.3)
-        val intervalLitExpr = IntervalLiteralExpression(1440000)
+        val intervalLitExpr = IntervalLiteralExpression(1555200000L)
+        val dateLitExpr = DateLiteralExpression(851990400000L)
 
         assertTrue(stringLitExpr.toString == "\"Hello,World!\"")
         assertTrue(intLitExpr.toString == "42")
         assertTrue(doubleLitExpr.toString == "37.3")
-        assertTrue(intervalLitExpr.toString == "1440000")
+        assertTrue(intervalLitExpr.toString == "INTERVAL '18' DAY")
+        assertTrue(dateLitExpr.toString == "DATE '1996-12-31'")
     }
 }

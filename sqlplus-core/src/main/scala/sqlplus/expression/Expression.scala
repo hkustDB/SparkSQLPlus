@@ -2,6 +2,9 @@ package sqlplus.expression
 
 import sqlplus.types.{DataType, DateDataType, DoubleDataType, IntDataType, IntervalDataType, LongDataType, StringDataType, TimestampDataType}
 
+import java.text.SimpleDateFormat
+import java.util.Date
+
 sealed trait Expression {
     def getType(): DataType
 
@@ -110,20 +113,24 @@ case class DoubleLiteralExpression(lit: Double) extends LiteralExpression {
 
 case class IntervalLiteralExpression(lit: Long) extends LiteralExpression {
     val ms = s"${lit}L"
+    val day = lit / (24 * 3600 * 1000)
+
     override def getLiteral(): String = ms
 
     override def getType(): DataType = IntervalDataType
 
-    override def format(): String = lit.toString
+    override def format(): String = s"INTERVAL '$day' DAY"
 }
 
 case class DateLiteralExpression(lit: Long) extends LiteralExpression {
     val ms = s"${lit}L"
+    lazy val date = (new SimpleDateFormat("yyyy-MM-dd")).format(new Date(lit))
+
     override def getLiteral(): String = ms
 
     override def getType(): DataType = DateDataType
 
-    override def format(): String = lit.toString
+    override def format(): String = s"DATE '$date'"
 }
 
 case class CaseWhenExpression(branches: List[(Operator, List[Expression], Expression)], default: Expression) extends Expression {
