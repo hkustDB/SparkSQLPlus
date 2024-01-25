@@ -7,7 +7,7 @@ package sqlplus.graph
  * @param subset the minimal subset(including the root) that covers all the output variables
  */
 class JoinTree(val root: Relation, val edges: Set[JoinTreeEdge], val subset: Set[Relation]) extends HyperGraph[Relation, JoinTreeEdge] {
-    lazy val maxFanout: Int = edges.groupBy(e => e.getSrc).values.map(s => s.size).max
+    lazy val maxFanout: Int = if (edges.nonEmpty) edges.groupBy(e => e.getSrc).values.map(s => s.size).max else 0
 
     override def getEdges(): Set[JoinTreeEdge] = edges
 
