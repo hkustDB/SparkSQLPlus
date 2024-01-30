@@ -93,6 +93,7 @@ public class RestApiController {
         JoinTree result = new JoinTree();
         Set<sqlplus.graph.JoinTreeEdge> joinTreeEdges = JavaConverters.setAsJavaSet(joinTree.edges());
         Set<Relation> relations = new HashSet<>();
+        relations.add(joinTree.getRoot());
         joinTreeEdges.forEach(e -> {
             relations.add(e.getSrc());
             relations.add(e.getDst());
