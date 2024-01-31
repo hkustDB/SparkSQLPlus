@@ -18,6 +18,7 @@ import sqlplus.codegen.SparkSQLPlusExampleCodeGenerator;
 import sqlplus.codegen.SparkSQLPlusExperimentCodeGenerator;
 import sqlplus.compile.CompileResult;
 import sqlplus.compile.SqlPlusCompiler;
+import sqlplus.convert.ExtraCondition;
 import sqlplus.convert.LogicalPlanConverter;
 import sqlplus.convert.RunResult;
 import sqlplus.convert.TopK;
@@ -54,7 +55,7 @@ public class CompileController {
 
     private scala.Option<TopK> optTopK = null;
 
-    private List<Tuple3<JoinTree, ComparisonHyperGraph, scala.collection.immutable.List<Tuple2<Variable, Variable>>>> candidates = null;
+    private List<Tuple3<JoinTree, ComparisonHyperGraph, scala.collection.immutable.List<ExtraCondition>>> candidates = null;
 
     private CatalogManager catalogManager = null;
 
@@ -113,7 +114,7 @@ public class CompileController {
         tables = scala.collection.JavaConverters.asScalaBuffer(sourceTables).toList();
     }
 
-    private Result mkSubmitResult(List<Tuple3<JoinTree, ComparisonHyperGraph, scala.collection.immutable.List<Tuple2<Variable, Variable>>>> candidates) {
+    private Result mkSubmitResult(List<Tuple3<JoinTree, ComparisonHyperGraph, scala.collection.immutable.List<ExtraCondition>>> candidates) {
         Result result = new Result();
         result.setCode(200);
         CompileSubmitResponse response = new CompileSubmitResponse();

@@ -4,9 +4,9 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.springframework.web.bind.annotation.*;
-import scala.Tuple2;
 import scala.collection.JavaConverters;
 import sqlplus.catalog.CatalogManager;
+import sqlplus.convert.ExtraCondition;
 import sqlplus.convert.LogicalPlanConverter;
 import sqlplus.convert.RunResult;
 import sqlplus.expression.Expression;
@@ -89,7 +89,7 @@ public class RestApiController {
         }
     }
 
-    private JoinTree buildJoinTree(sqlplus.graph.JoinTree joinTree, ComparisonHyperGraph comparisonHyperGraph, scala.collection.immutable.List<Tuple2<Variable, Variable>> extra) {
+    private JoinTree buildJoinTree(sqlplus.graph.JoinTree joinTree, ComparisonHyperGraph comparisonHyperGraph, scala.collection.immutable.List<ExtraCondition> extra) {
         JoinTree result = new JoinTree();
         Set<sqlplus.graph.JoinTreeEdge> joinTreeEdges = JavaConverters.setAsJavaSet(joinTree.edges());
         Set<Relation> relations = new HashSet<>();
@@ -133,10 +133,10 @@ public class RestApiController {
         }).collect(Collectors.toList());
         result.setComparisons(comparisons);
 
-        List<List<String>> extraEqualConditions = JavaConverters.seqAsJavaList(extra).stream()
-                .map(t -> Arrays.asList(t._1().name(), t._2().name()))
+        List<String> extraConditions = JavaConverters.seqAsJavaList(extra).stream()
+                .map(Object::toString)
                 .collect(Collectors.toList());
-        result.setExtraEqualConditions(extraEqualConditions);
+        result.setExtraConditions(extraConditions);
 
         return result;
     }

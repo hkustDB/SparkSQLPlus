@@ -84,7 +84,7 @@ case class StringLiteralExpression(lit: String) extends LiteralExpression {
 
     override def getType(): DataType = StringDataType
 
-    override def format(): String = getLiteral()
+    override def format(): String = s"'$lit'"
 }
 
 case class IntLiteralExpression(lit: Int) extends LiteralExpression {

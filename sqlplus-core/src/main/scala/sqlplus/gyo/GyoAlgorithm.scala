@@ -1,6 +1,7 @@
 package sqlplus.gyo
 
-import sqlplus.expression.{Variable, VariableManager}
+import sqlplus.convert.{EqualToCondition, ExtraCondition}
+import sqlplus.expression.{SingleVariableExpression, Variable, VariableManager}
 import sqlplus.graph._
 import sqlplus.gyo
 
@@ -75,7 +76,7 @@ class GyoAlgorithm {
                 val toBreak = parents - p
                 val hitVariables = hit.head.getVariableList().toSet
                 var updatedHyperGraph = hyperGraph
-                val extraEqualConditions = ListBuffer.empty[(Variable, Variable)]
+                val extraEqualConditions = ListBuffer.empty[ExtraCondition]
 
                 toBreak.foreach(r => {
                     updatedHyperGraph = updatedHyperGraph.removeHyperEdge(r)
@@ -83,7 +84,7 @@ class GyoAlgorithm {
                     val replace = intersect.map(v => (v, variableManager.getNewVariable(v.dataType)))
                     val newHyperEdge = r.replaceVariables(replace.toMap)
                     updatedHyperGraph = updatedHyperGraph.addHyperEdge(newHyperEdge)
-                    extraEqualConditions.appendAll(replace)
+                    extraEqualConditions.appendAll(replace.map(t => EqualToCondition(SingleVariableExpression(t._1), SingleVariableExpression(t._2))))
                 })
 
                 val optGyoResult = runAlgorithm(updatedHyperGraph, outputVariables, terminateIfNonFreeConnex)

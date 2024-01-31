@@ -67,51 +67,56 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
             }
         }
 
-        val candidates: List[(JoinTree, ComparisonHyperGraph, List[(Variable, Variable)])] = candidatesFromResults.flatMap(t => {
+        val candidates: List[(JoinTree, ComparisonHyperGraph, List[ExtraCondition])] = candidatesFromResults.flatMap(t => {
             val joinTree = t._1
             val hyperGraph = t._2
-            val extraEqualConditions = t._3
-            val comparisonHyperEdges: List[Comparison] = conditions.map({
+            val extraEqualConditions = ListBuffer.empty[ExtraCondition]
+            extraEqualConditions.appendAll(t._3)
+
+            val comparisonHyperEdges = ListBuffer.empty[Comparison]
+            conditions.foreach {
                 case LessThanCondition(leftOperand, rightOperand) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, leftOperand, rightOperand).toSet
                     val op = Operator.getOperator("<", leftOperand, rightOperand, false)
-                    Comparison(path, op, leftOperand, rightOperand)
+                    comparisonHyperEdges.append(Comparison(path, op, leftOperand, rightOperand))
                 case LessThanOrEqualToCondition(leftOperand, rightOperand) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, leftOperand, rightOperand).toSet
                     val op = Operator.getOperator("<=", leftOperand, rightOperand, false)
-                    Comparison(path, op, leftOperand, rightOperand)
+                    comparisonHyperEdges.append(Comparison(path, op, leftOperand, rightOperand))
                 case GreaterThanCondition(leftOperand, rightOperand) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, leftOperand, rightOperand).toSet
                     val op = Operator.getOperator(">", leftOperand, rightOperand, false)
-                    Comparison(path, op, leftOperand, rightOperand)
+                    comparisonHyperEdges.append(Comparison(path, op, leftOperand, rightOperand))
                 case GreaterThanOrEqualToCondition(leftOperand, rightOperand) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, leftOperand, rightOperand).toSet
                     val op = Operator.getOperator(">=", leftOperand, rightOperand, false)
-                    Comparison(path, op, leftOperand, rightOperand)
+                    comparisonHyperEdges.append(Comparison(path, op, leftOperand, rightOperand))
                 case EqualToLiteralCondition(operand, literal) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, operand, operand).toSet
                     val op = Operator.getOperator("=", operand, literal, false)
-                    Comparison(path, op, operand, operand)
+                    comparisonHyperEdges.append(Comparison(path, op, operand, operand))
                 case NotEqualToLiteralCondition(operand, literal) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, operand, operand).toSet
                     val op = Operator.getOperator("<>", operand, literal, false)
-                    Comparison(path, op, operand, operand)
+                    comparisonHyperEdges.append(Comparison(path, op, operand, operand))
                 case LikeCondition(operand, s, isNeg) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, operand, operand).toSet
                     val op = Operator.getOperator("LIKE", operand, s, isNeg)
-                    Comparison(path, op, operand, operand)
+                    comparisonHyperEdges.append(Comparison(path, op, operand, operand))
                 case InCondition(operand, literals, isNeg) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, operand, operand).toSet
                     val op = Operator.getOperator("IN", operand, literals, isNeg)
-                    Comparison(path, op, operand, operand)
-            })
+                    comparisonHyperEdges.append(Comparison(path, op, operand, operand))
+                case ex: ExtraCondition =>
+                    extraEqualConditions.append(ex)
+            }
 
             val comparisonHyperGraph = new ComparisonHyperGraph(comparisonHyperEdges.toSet)
 
             // joinTreesWithComparisonHyperGraph is a candidate(for selection of minimum degree)
             // only when the comparisonHyperGraph is berge-acyclic
             if (comparisonHyperGraph.isBergeAcyclic())
-                List((joinTree, comparisonHyperGraph, extraEqualConditions))
+                List((joinTree, comparisonHyperGraph, extraEqualConditions.toList))
             else
                 List.empty
         })
@@ -119,7 +124,7 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         RunResult(candidates, outputVariables, computations, isFull, isFreeConnex, groupByVariables, aggregations, optTopK)
     }
 
-    def candidatesWithLimit(list: List[(JoinTree, ComparisonHyperGraph, List[(Variable, Variable)])], limit: Int): List[(JoinTree, ComparisonHyperGraph, List[(Variable, Variable)])] = {
+    def candidatesWithLimit(list: List[(JoinTree, ComparisonHyperGraph, List[ExtraCondition])], limit: Int): List[(JoinTree, ComparisonHyperGraph, List[ExtraCondition])] = {
         val zippedWithDegree = list.map(t => (t._1, t._2, t._3, t._2.getDegree()))
         val minDegree = zippedWithDegree.map(t => t._4).min
         zippedWithDegree.filter(t => t._4 == minDegree).take(limit).map(t => (t._1, t._2, t._3))
@@ -312,17 +317,7 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
                     val s = convertRexLiteralToExpression(rexCall.getOperands.get(1).asInstanceOf[RexLiteral]).asInstanceOf[StringLiteralExpression]
                     LikeCondition(operand, s, isNeg)
                 case "OR" =>
-                    // we don't allow explicit 'OR'. The 'OR' must come from condition like R.a IN ('b', 'c', 'd').
-                    // this 'IN' becomes a 'OR' over 3 '=' with literal. Also, the column in the '=' must be the same.
-                    assert(rexCall.getOperands.forall(n => n.isInstanceOf[RexCall] && n.asInstanceOf[RexCall].getOperator.getName == "="))
-                    val leftOperands = rexCall.getOperands.map(n => n.asInstanceOf[RexCall].getOperands.get(0))
-                    val rightOperands = rexCall.getOperands.map(n => n.asInstanceOf[RexCall].getOperands.get(1))
-                    assert(leftOperands.forall(n => n.isInstanceOf[RexInputRef]))
-                    assert(rightOperands.forall(n => n.isInstanceOf[RexLiteral]))
-                    val operand = convertRexNodeToExpression(leftOperands.head, variableList)
-                    assert(leftOperands.forall(n => convertRexNodeToExpression(n, variableList) == operand))
-                    val literals = rightOperands.map(n => convertRexLiteralToExpression(n.asInstanceOf[RexLiteral])).toList
-                    InCondition(operand, literals, isNeg)
+                    convertOrRexCallToCondition(rexCall, variableList, isNeg)
             }
         })
 
@@ -719,5 +714,39 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
                 ExtractYearExpression(from)
             case _ => throw new UnsupportedOperationException("unsupported flag " + flag + " in EXTRACT.")
         }
+    }
+
+    private def convertOrRexCallToCondition(rexCall: RexCall, variableList: List[Variable], isNeg: Boolean): Condition = {
+        if (rexCall.getOperands.forall(n => n.isInstanceOf[RexCall] && n.asInstanceOf[RexCall].getOperator.getName == "=")) {
+            val leftOperands = rexCall.getOperands.map(n => n.asInstanceOf[RexCall].getOperands.get(0))
+            val rightOperands = rexCall.getOperands.map(n => n.asInstanceOf[RexCall].getOperands.get(1))
+            assert(leftOperands.forall(n => n.isInstanceOf[RexInputRef]) && rightOperands.forall(n => n.isInstanceOf[RexLiteral]))
+
+            val headExpr = convertRexNodeToExpression(leftOperands.head, variableList)
+            val leftExprs = leftOperands.map(n => convertRexNodeToExpression(n, variableList))
+            val literals = rightOperands.map(n => convertRexLiteralToExpression(n.asInstanceOf[RexLiteral])).toList
+            if (leftExprs.forall(expr => expr == headExpr)) {
+                InCondition(headExpr, literals, isNeg)
+            } else {
+                assert(!isNeg)
+                val conditions = leftExprs.zip(literals).map(t => EqualToLiteralCondition(t._1, t._2)).toList
+                OrCondition(conditions)
+            }
+        } else {
+            assert(!isNeg)
+            assert(rexCall.getOperands.forall(n => n.isInstanceOf[RexCall] && n.asInstanceOf[RexCall].getOperator.getName == "AND"))
+            val rexCalls = rexCall.getOperands.map(n => n.asInstanceOf[RexCall]).toList
+            val conditions = rexCalls.map(c => convertAndRexCallToCondition(c, variableList))
+            OrCondition(conditions)
+        }
+    }
+
+    private def convertAndRexCallToCondition(rexCall: RexCall, variableList: List[Variable]): Condition = {
+        assert(rexCall.getOperator.getName == "AND")
+        val rexCalls = rexCall.getOperands.map(n => n.asInstanceOf[RexCall])
+        assert(rexCalls.forall(n => n.getOperator.getName == "="))
+        val conditions = rexCalls.map(n => EqualToLiteralCondition(convertRexNodeToExpression(n.getOperands.get(0), variableList),
+            convertRexLiteralToExpression(n.getOperands.get(1).asInstanceOf[RexLiteral]))).toList
+        AndCondition(conditions)
     }
 }

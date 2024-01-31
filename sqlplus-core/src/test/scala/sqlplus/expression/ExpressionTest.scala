@@ -45,14 +45,14 @@ class ExpressionTest {
     }
 
     @Test
-    def testLiteralExpressionToString() = {
+    def testLiteralExpressionToString(): Unit = {
         val stringLitExpr = StringLiteralExpression("Hello,World!")
         val intLitExpr = IntLiteralExpression(42)
         val doubleLitExpr = DoubleLiteralExpression(37.3)
         val intervalLitExpr = IntervalLiteralExpression(1555200000L)
         val dateLitExpr = DateLiteralExpression(851990400000L)
 
-        assertTrue(stringLitExpr.toString == "\"Hello,World!\"")
+        assertTrue(stringLitExpr.toString == "'Hello,World!'")
         assertTrue(intLitExpr.toString == "42")
         assertTrue(doubleLitExpr.toString == "37.3")
         assertTrue(intervalLitExpr.toString == "INTERVAL '18' DAY")
