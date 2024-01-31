@@ -63,7 +63,7 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
                 (ghd.run(relationalHyperGraph, requiredVariables).candidates.map(t => (t._1, t._2, List.empty)), false)
             } else {
                 // aggregation query, try to find a ghd with groupByVariables at the top
-                (ghd.run(relationalHyperGraph, groupByVariables.toSet).candidates.map(t => (t._1, t._2, List.empty)), false)
+                (ghd.run(relationalHyperGraph, if (groupByVariables.nonEmpty) groupByVariables.toSet else requiredVariables).candidates.map(t => (t._1, t._2, List.empty)), false)
             }
         }
 
