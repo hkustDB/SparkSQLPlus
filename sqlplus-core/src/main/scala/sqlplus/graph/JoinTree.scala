@@ -2,12 +2,17 @@ package sqlplus.graph
 
 /**
  * A joinTree is a set of JoinTreeEdge and a root relation.
+ *
  * @param root the root relation
  * @param edges the joinTreeEdges
  * @param subset the minimal subset(including the root) that covers all the output variables
  */
 class JoinTree(val root: Relation, val edges: Set[JoinTreeEdge], val subset: Set[Relation]) extends HyperGraph[Relation, JoinTreeEdge] {
     lazy val maxFanout: Int = if (edges.nonEmpty) edges.groupBy(e => e.getSrc).values.map(s => s.size).max else 0
+
+    lazy val pk2fkCount: Int = edges.count(e => e.keyType == KeyTypeParent)
+
+    lazy val fk2pkCount: Int = edges.count(e => e.keyType == KeyTypeChild)
 
     override def getEdges(): Set[JoinTreeEdge] = edges
 

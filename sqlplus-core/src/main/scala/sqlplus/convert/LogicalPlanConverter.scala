@@ -135,6 +135,14 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
             case "fanout" if !desc =>
                 // select the joinTree and ComparisonHyperGraph with minimum maxFanout
                 runResult.candidates.sortBy(t => t._1.getMaxFanout()).take(limit)
+            case "pk2fk" if !desc =>
+                runResult.candidates.sortBy(t => t._1.pk2fkCount).take(limit)
+            case "pk2fk" if desc =>
+                runResult.candidates.sortBy(t => t._1.pk2fkCount).reverse.take(limit)
+            case "fk2pk" if !desc =>
+                runResult.candidates.sortBy(t => t._1.fk2pkCount).take(limit)
+            case "fk2pk" if desc =>
+                runResult.candidates.sortBy(t => t._1.fk2pkCount).reverse.take(limit)
             case "" =>
                 runResult.candidates.take(limit)
         }
