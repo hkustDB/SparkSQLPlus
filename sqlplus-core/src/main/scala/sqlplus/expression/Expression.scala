@@ -15,6 +15,12 @@ sealed trait Expression {
     override def toString: String = format()
 }
 
+case object DummyExpression extends Expression {
+    override def getType(): DataType = throw new UnsupportedOperationException()
+    override def getVariables(): Set[Variable] = Set()
+    override def format(): String = "N/A"
+}
+
 sealed trait ComputeExpression extends Expression {
     def getComputeFunction(variables: List[Variable], cast: Boolean = false): String => String
 }

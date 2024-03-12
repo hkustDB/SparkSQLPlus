@@ -107,6 +107,16 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, operand, operand).toSet
                     val op = Operator.getOperator("IN", operand, literals, isNeg)
                     comparisonHyperEdges.append(Comparison(path, op, operand, operand))
+                case OrCondition(conditions, involved) =>
+                    val involvedVariables = involved.flatMap(e => e.getVariables())
+                    val optPushedDownRelation = relations.find(r => r.isInstanceOf[TableScanRelation] && involvedVariables.subsetOf(r.getNodes()))
+                    if (optPushedDownRelation.nonEmpty) {
+                        val path = new JoinTreeEdge(optPushedDownRelation.get, optPushedDownRelation.get)
+                        val op = OrOperator(conditions)
+                        comparisonHyperEdges.append(Comparison(Set(path), op, DummyExpression, DummyExpression))
+                    } else {
+                        extraEqualConditions.append(ExtraOrCondition(conditions))
+                    }
                 case ex: ExtraCondition =>
                     extraEqualConditions.append(ex)
             }
@@ -730,34 +740,40 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
             } else {
                 assert(!isNeg)
                 val conditions = leftExprs.zip(literals).map(t => EqualToLiteralCondition(t._1, t._2)).toList
-                OrCondition(conditions)
+                OrCondition(conditions, leftExprs.toSet)
             }
         } else {
             assert(!isNeg)
             val rexCalls = rexCall.getOperands.map(n => n.asInstanceOf[RexCall]).toList
-            val conditions = rexCalls.map(c => convertRexCallToLitCondition(c, variableList, false))
-            OrCondition(conditions)
+            val converted = rexCalls.map(c => convertRexCallToLitCondition(c, variableList, false))
+            OrCondition(converted.map(t => t._1), converted.flatMap(t => t._2).toSet)
         }
     }
 
-    private def convertRexCallToLitCondition(rexCall: RexCall, variableList: List[Variable], isNeg: Boolean): Condition = {
+    private def convertRexCallToLitCondition(rexCall: RexCall, variableList: List[Variable], isNeg: Boolean): (Condition, Set[Expression]) = {
         rexCall.getOperator.getName match {
             case "AND" =>
                 val rexCalls = rexCall.getOperands.map(n => n.asInstanceOf[RexCall])
-                val conditions = rexCalls.map(c => convertRexCallToLitCondition(c, variableList, isNeg)).toList
-                AndCondition(conditions)
+                val converted = rexCalls.map(c => convertRexCallToLitCondition(c, variableList, isNeg)).toList
+                val involved = converted.flatMap(t => t._2).toSet
+                (AndCondition(converted.map(t => t._1), involved), involved)
+            case "OR" =>
+                val rexCalls = rexCall.getOperands.map(n => n.asInstanceOf[RexCall])
+                val converted = rexCalls.map(c => convertRexCallToLitCondition(c, variableList, isNeg)).toList
+                val involved = converted.flatMap(t => t._2).toSet
+                (OrCondition(converted.map(t => t._1), involved), involved)
             case "=" =>
                 val expr = convertRexNodeToExpression(rexCall.getOperands.get(0), variableList)
                 val lit = convertRexLiteralToExpression(rexCall.getOperands.get(1).asInstanceOf[RexLiteral])
-                EqualToLiteralCondition(expr, lit)
+                (EqualToLiteralCondition(expr, lit), Set(expr))
             case "<>" =>
                 val expr = convertRexNodeToExpression(rexCall.getOperands.get(0), variableList)
                 val lit = convertRexLiteralToExpression(rexCall.getOperands.get(1).asInstanceOf[RexLiteral])
-                NotEqualToLiteralCondition(expr, lit)
+                (NotEqualToLiteralCondition(expr, lit), Set(expr))
             case "LIKE" =>
                 val expr = convertRexNodeToExpression(rexCall.getOperands.get(0), variableList)
                 val s = convertRexLiteralToExpression(rexCall.getOperands.get(1).asInstanceOf[RexLiteral]).asInstanceOf[StringLiteralExpression]
-                LikeCondition(expr, s, isNeg)
+                (LikeCondition(expr, s, isNeg), Set(expr))
             case "NOT" =>
                 convertRexCallToLitCondition(rexCall.getOperands.get(0).asInstanceOf[RexCall], variableList, !isNeg)
         }

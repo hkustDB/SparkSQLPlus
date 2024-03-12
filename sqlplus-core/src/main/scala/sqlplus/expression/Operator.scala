@@ -1,5 +1,6 @@
 package sqlplus.expression
 
+import sqlplus.convert.Condition
 import sqlplus.types.{DataType, DataTypeCasting, DateDataType, DoubleDataType, IntDataType, LongDataType, StringDataType, TimestampDataType}
 
 import scala.reflect.runtime.universe.{TypeTag, typeOf}
@@ -318,3 +319,12 @@ case object StringLessThan extends StringBinaryOperator("<")
 case object StringLessThanOrEqualTo extends StringBinaryOperator("<=")
 case object StringGreaterThan extends StringBinaryOperator(">")
 case object StringGreaterThanOrEqualTo extends StringBinaryOperator(">=")
+
+case class OrOperator(conditions: List[Condition]) extends Operator {
+    override def getFuncName(): String = throw new UnsupportedOperationException()
+    override def getFuncDefinition(): List[String] = throw new UnsupportedOperationException()
+    override def getFuncLiteral(isReverse: Boolean): String = throw new UnsupportedOperationException()
+    override def isNegated(): Boolean = false
+
+    override def format(expressions: List[Expression]): String = conditions.map(c => c.toString).mkString("(", " OR ", ")")
+}
