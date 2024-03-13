@@ -304,10 +304,9 @@ object UnaryOperatorSuffix {
     }
 }
 
-class StringBinaryOperator(relationalOperator: String) extends BinaryOperator {
+abstract class StringBinaryOperator(relationalOperator: String) extends BinaryOperator {
     override def leftTypeName: String = "String"
     override def rightTypeName: String = "String"
-    override def getFuncName(): String = throw new UnsupportedOperationException()
     override def getFuncDefinition(): List[String] = throw new UnsupportedOperationException()
     override def getFuncLiteral(isReverse: Boolean): String = throw new UnsupportedOperationException()
     override def isNegated(): Boolean = false
@@ -315,13 +314,24 @@ class StringBinaryOperator(relationalOperator: String) extends BinaryOperator {
     override def format(expressions: List[Expression]): String = s"(${expressions(0).format()} ${relationalOperator} ${expressions(1).format()})"
 }
 
-case object StringLessThan extends StringBinaryOperator("<")
-case object StringLessThanOrEqualTo extends StringBinaryOperator("<=")
-case object StringGreaterThan extends StringBinaryOperator(">")
-case object StringGreaterThanOrEqualTo extends StringBinaryOperator(">=")
+case object StringLessThan extends StringBinaryOperator("<") {
+    override def getFuncName(): String = "stringLessThan"
+}
+
+case object StringLessThanOrEqualTo extends StringBinaryOperator("<=") {
+    override def getFuncName(): String = "stringLessThanOrEqualTo"
+}
+
+case object StringGreaterThan extends StringBinaryOperator(">") {
+    override def getFuncName(): String = "stringGreaterThan"
+}
+
+case object StringGreaterThanOrEqualTo extends StringBinaryOperator(">=") {
+    override def getFuncName(): String = "stringGreaterThanOrEqualTo"
+}
 
 case class OrOperator(conditions: List[Condition]) extends Operator {
-    override def getFuncName(): String = throw new UnsupportedOperationException()
+    override def getFuncName(): String = "or"
     override def getFuncDefinition(): List[String] = throw new UnsupportedOperationException()
     override def getFuncLiteral(isReverse: Boolean): String = throw new UnsupportedOperationException()
     override def isNegated(): Boolean = false

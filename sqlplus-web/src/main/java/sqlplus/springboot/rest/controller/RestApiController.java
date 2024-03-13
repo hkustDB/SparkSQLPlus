@@ -129,7 +129,8 @@ public class RestApiController {
             List<JoinTreeEdge> path = JavaConverters.setAsJavaSet(c.getNodes()).stream()
                     .map(e -> new JoinTreeEdge(e.getSrc().getRelationId(), e.getDst().getRelationId(), e.keyType().toString()))
                     .collect(Collectors.toList());
-            return new Comparison(op, path, c.left().format(), c.right().format());
+            return new Comparison(op, path, c.left().format(), c.right().format(),
+                    c.op().format(JavaConverters.asScalaBuffer(Arrays.asList(c.left(), c.right())).toList()));
         }).collect(Collectors.toList());
         result.setComparisons(comparisons);
 
