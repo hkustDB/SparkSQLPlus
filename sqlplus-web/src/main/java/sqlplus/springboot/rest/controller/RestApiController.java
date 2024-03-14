@@ -32,7 +32,8 @@ import java.util.stream.Collectors;
 public class RestApiController {
     @PostMapping("/parse")
     public Result parseQuery(@RequestBody ParseQueryRequest request,
-                             @RequestParam Optional<String> orderBy, @RequestParam Optional<Boolean> desc, @RequestParam Optional<Integer> limit) {
+                             @RequestParam Optional<String> orderBy, @RequestParam Optional<Boolean> desc, @RequestParam Optional<Integer> limit,
+                             @RequestParam Optional<Boolean> sample) {
         try {
             SqlNodeList nodeList = SqlPlusParser.parseDdl(request.getDdl());
             CatalogManager catalogManager = new CatalogManager();
@@ -45,7 +46,16 @@ public class RestApiController {
 
             VariableManager variableManager = new VariableManager();
             LogicalPlanConverter converter = new LogicalPlanConverter(variableManager, catalogManager);
-            RunResult runResult = converter.runAndSelect(logicalPlan, orderBy.orElse(""), desc.orElse(false), limit.orElse(Integer.MAX_VALUE));
+
+            RunResult runResult = null;
+            if (sample.isPresent() && sample.get()) {
+                // first compute all the plans
+                runResult = converter.runAndSelect(logicalPlan, orderBy.orElse(""), desc.orElse(false), Integer.MAX_VALUE);
+                // sample from the previous result
+                runResult = RunResult.sample(runResult, limit.orElse(Integer.MAX_VALUE));
+            } else {
+                runResult = converter.runAndSelect(logicalPlan, orderBy.orElse(""), desc.orElse(false), limit.orElse(Integer.MAX_VALUE));
+            }
 
             ParseQueryResponse response = new ParseQueryResponse();
             response.setTables(tables.stream()
