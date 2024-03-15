@@ -42,12 +42,15 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         val relationalHyperGraph = relations.foldLeft(RelationalHyperGraph.EMPTY)((g, r) => g.addHyperEdge(r))
 
         val gyoResults = if (aggregations.isEmpty) {
-            // non-aggregation query, try to find a jointree with requiredVariables at the top
-            // if the query is non-free-connex, terminate and use GHD instead
-            gyo.run(variableManager, relationalHyperGraph, requiredVariables, true)
+            // non-aggregation query
+            // try to find a join tree with requiredVariables at the top
+            // if the query is non-free-connex but acyclic, find a join tree such that requiredVariables are closed to the root
+            // if the query is cyclic, terminate and use GHD instead
+            gyo.run(variableManager, relationalHyperGraph, requiredVariables, false)
         } else {
-            // aggregation query, try to find a jointree with groupByVariables at the top
-            // if the query is non-free-connex but acyclic, find a jointree such that groupByVariables are closed to the root
+            // aggregation query
+            // try to find a join tree with groupByVariables at the top
+            // if the query is non-free-connex but acyclic, find a join tree such that groupByVariables are closed to the root
             // if the query is cyclic, terminate and use GHD instead
             gyo.run(variableManager, relationalHyperGraph, groupByVariables.toSet, false)
         }
