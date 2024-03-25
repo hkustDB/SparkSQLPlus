@@ -33,7 +33,7 @@ public class RestApiController {
     @PostMapping("/parse")
     public Result parseQuery(@RequestBody ParseQueryRequest request,
                              @RequestParam Optional<String> orderBy, @RequestParam Optional<Boolean> desc, @RequestParam Optional<Integer> limit,
-                             @RequestParam Optional<Boolean> sample) {
+                             @RequestParam Optional<Boolean> sample, @RequestParam Optional<Integer> sampleSize) {
         try {
             SqlNodeList nodeList = SqlPlusParser.parseDdl(request.getDdl());
             CatalogManager catalogManager = new CatalogManager();
@@ -52,7 +52,9 @@ public class RestApiController {
                 // first compute all the plans
                 runResult = converter.runAndSelect(logicalPlan, orderBy.orElse(""), desc.orElse(false), Integer.MAX_VALUE);
                 // sample from the previous result
-                runResult = RunResult.sample(runResult, limit.orElse(Integer.MAX_VALUE));
+                int limitValue = limit.orElse(Integer.MAX_VALUE);
+                int sampleSizeValue = sampleSize.orElse(limitValue);
+                runResult = RunResult.sample(runResult, limitValue, sampleSizeValue);
             } else {
                 runResult = converter.runAndSelect(logicalPlan, orderBy.orElse(""), desc.orElse(false), limit.orElse(Integer.MAX_VALUE));
             }

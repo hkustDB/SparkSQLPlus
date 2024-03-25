@@ -18,17 +18,21 @@ object RunResult {
         RunResult(List(result), outputVariables, computations, isFull, isFreeConnex, groupByVariables, aggregations, optTopK)
     }
 
-    def sample(result: RunResult, size: Int): RunResult = {
-        if (result.candidates.size <= size) {
+    def sample(result: RunResult, limit: Int, sampleSize: Int): RunResult = {
+        if (result.candidates.size <= limit) {
             result
         } else {
-            val step = result.candidates.size / size
+            assert(sampleSize <= limit)
+            val keep = limit - sampleSize
             val r = ListBuffer.empty[(JoinTree, ComparisonHyperGraph, List[ExtraCondition])]
-            for (i <- 0.until(result.candidates.size, step)) {
+            r.appendAll(result.candidates.take(keep))
+
+            val step = (result.candidates.size - keep) / (sampleSize)
+            for (i <- keep.until(result.candidates.size, step)) {
                 r.append(result.candidates(i))
             }
 
-            val candidates = r.take(size).toList
+            val candidates = r.take(limit).toList
             RunResult(candidates, result.outputVariables, result.computations, result.isFull, result.isFreeConnex,
                 result.groupByVariables, result.aggregations, result.optTopK)
         }
