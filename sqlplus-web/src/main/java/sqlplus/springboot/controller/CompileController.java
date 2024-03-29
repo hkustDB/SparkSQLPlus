@@ -82,7 +82,7 @@ public class CompileController {
 
             variableManager = new VariableManager();
             LogicalPlanConverter converter = new LogicalPlanConverter(variableManager, catalogManager);
-            RunResult runResult = converter.run(logicalPlan);
+            RunResult runResult = converter.run(logicalPlan, false);
             outputVariables = runResult.outputVariables();
             computations = runResult.computations();
             isFull = runResult.isFull();

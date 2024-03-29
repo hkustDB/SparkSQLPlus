@@ -1,6 +1,6 @@
 package sqlplus.gyo
 
-import org.junit.Assert.assertTrue
+import org.junit.Assert.{assertFalse, assertTrue}
 import org.junit.Test
 import sqlplus.expression.VariableManager
 import sqlplus.graph.{RelationalHyperGraph, TableScanRelation}
@@ -17,13 +17,13 @@ class GyoAlgorithmTest {
         val v3 = variableManager.getNewVariable(IntDataType)
         val v4 = variableManager.getNewVariable(IntDataType)
 
-        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty)
-        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty)
-        val r3 = new TableScanRelation("R3", List(v3, v4), "R3", Set.empty)
+        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty, 0)
+        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty, 0)
+        val r3 = new TableScanRelation("R3", List(v3, v4), "R3", Set.empty, 0)
 
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
 
-        val result = algorithm.run(variableManager, hyperGraph, Set(v1, v2, v3, v4), true).head
+        val result = algorithm.run(hyperGraph, Set(v1, v2, v3, v4))
         assertTrue(result.candidates.size == 3)
 
         val joinTrees = result.candidates.map(t => t._1)
@@ -46,13 +46,13 @@ class GyoAlgorithmTest {
         val v3 = variableManager.getNewVariable(IntDataType)
         val v4 = variableManager.getNewVariable(IntDataType)
 
-        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty)
-        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty)
-        val r3 = new TableScanRelation("R3", List(v3, v4), "R3", Set.empty)
+        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty, 0)
+        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty, 0)
+        val r3 = new TableScanRelation("R3", List(v3, v4), "R3", Set.empty, 0)
 
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
 
-        val result = algorithm.run(variableManager, hyperGraph, Set(v1, v2), true).head
+        val result = algorithm.run(hyperGraph, Set(v1, v2))
         assertTrue(result.candidates.size == 1)
 
         val joinTrees = result.candidates.map(t => t._1)
@@ -75,13 +75,13 @@ class GyoAlgorithmTest {
         val v3 = variableManager.getNewVariable(IntDataType)
         val v4 = variableManager.getNewVariable(IntDataType)
 
-        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty)
-        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty)
-        val r3 = new TableScanRelation("R3", List(v3, v4), "R3", Set.empty)
+        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty, 0)
+        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty, 0)
+        val r3 = new TableScanRelation("R3", List(v3, v4), "R3", Set.empty, 0)
 
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
 
-        val result = algorithm.run(variableManager, hyperGraph, Set(v2, v3), true).head
+        val result = algorithm.run(hyperGraph, Set(v2, v3))
         assertTrue(result.candidates.size == 1)
 
         val joinTrees = result.candidates.map(t => t._1)
@@ -92,26 +92,6 @@ class GyoAlgorithmTest {
             assertTrue(t.edges.exists(e => (e.getSrc == r1 && e.getDst == r2) || (e.getSrc == r2 && e.getDst == r1)))
             assertTrue(t.edges.exists(e => (e.getSrc == r2 && e.getDst == r3) || (e.getSrc == r3 && e.getDst == r2)))
         })
-    }
-
-    @Test
-    def testTerminateIfNonFreeConnex(): Unit = {
-        val algorithm = new GyoAlgorithm
-
-        val variableManager = new VariableManager
-        val v1 = variableManager.getNewVariable(IntDataType)
-        val v2 = variableManager.getNewVariable(IntDataType)
-        val v3 = variableManager.getNewVariable(IntDataType)
-        val v4 = variableManager.getNewVariable(IntDataType)
-
-        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty)
-        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty)
-        val r3 = new TableScanRelation("R3", List(v3, v4), "R3", Set.empty)
-
-        val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
-
-        val result = algorithm.run(variableManager, hyperGraph, Set(v1, v3, v4), true)
-        assertTrue(result.isEmpty)
     }
 
     @Test
@@ -126,16 +106,16 @@ class GyoAlgorithmTest {
         val v5 = variableManager.getNewVariable(IntDataType)
         val v6 = variableManager.getNewVariable(IntDataType)
 
-        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty)
-        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty)
-        val r3 = new TableScanRelation("R3", List(v3, v4), "R3", Set.empty)
-        val r4 = new TableScanRelation("R4", List(v4, v5), "R4", Set.empty)
-        val r5 = new TableScanRelation("R5", List(v5, v6), "R5", Set.empty)
+        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty, 0)
+        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty, 0)
+        val r3 = new TableScanRelation("R3", List(v3, v4), "R3", Set.empty, 0)
+        val r4 = new TableScanRelation("R4", List(v4, v5), "R4", Set.empty, 0)
+        val r5 = new TableScanRelation("R5", List(v5, v6), "R5", Set.empty, 0)
 
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
             .addHyperEdge(r4).addHyperEdge(r5)
 
-        val result = algorithm.run(variableManager, hyperGraph, Set(v2, v4, v5), false).head
+        val result = algorithm.run(hyperGraph, Set(v2, v4, v5))
         assertTrue(result.candidates.size == 3)
 
         val jointrees = result.candidates.map(_._1).toSet
@@ -145,7 +125,7 @@ class GyoAlgorithmTest {
         assertTrue(jointrees.count(t => t.root == r4) == 1)
     }
 
-    @Test
+    @Test(expected = classOf[IllegalStateException])
     def testCyclic(): Unit = {
         val algorithm = new GyoAlgorithm
 
@@ -154,17 +134,47 @@ class GyoAlgorithmTest {
         val v2 = variableManager.getNewVariable(IntDataType)
         val v3 = variableManager.getNewVariable(IntDataType)
 
-        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty)
-        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty)
-        val r3 = new TableScanRelation("R3", List(v3, v1), "R3", Set.empty)
+        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty, 0)
+        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty, 0)
+        val r3 = new TableScanRelation("R3", List(v3, v1), "R3", Set.empty, 0)
 
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
 
-        val result = algorithm.run(variableManager, hyperGraph, Set(v1, v2, v3), true)
-        assertTrue(result.isEmpty)
+        val result = algorithm.run(hyperGraph, Set(v1, v2, v3))
+    }
 
-        // the algorithm should terminate even if terminateIfNonFreeConnex is set to false
-        val result2 = algorithm.run(variableManager, hyperGraph, Set(v1, v2, v3), false)
-        assertTrue(result2.isEmpty)
+    def testIsAcyclic1(): Unit = {
+        val algorithm = new GyoAlgorithm
+
+        val variableManager = new VariableManager
+        val v1 = variableManager.getNewVariable(IntDataType)
+        val v2 = variableManager.getNewVariable(IntDataType)
+        val v3 = variableManager.getNewVariable(IntDataType)
+        val v4 = variableManager.getNewVariable(IntDataType)
+
+        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty, 0)
+        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty, 0)
+        val r3 = new TableScanRelation("R3", List(v3, v4), "R3", Set.empty, 0)
+
+        val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
+
+        assertTrue(algorithm.isAcyclic(hyperGraph))
+    }
+
+    def testIsAcyclic2(): Unit = {
+        val algorithm = new GyoAlgorithm
+
+        val variableManager = new VariableManager
+        val v1 = variableManager.getNewVariable(IntDataType)
+        val v2 = variableManager.getNewVariable(IntDataType)
+        val v3 = variableManager.getNewVariable(IntDataType)
+
+        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty, 0)
+        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty, 0)
+        val r3 = new TableScanRelation("R3", List(v3, v1), "R3", Set.empty, 0)
+
+        val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
+
+        assertFalse(algorithm.isAcyclic(hyperGraph))
     }
 }

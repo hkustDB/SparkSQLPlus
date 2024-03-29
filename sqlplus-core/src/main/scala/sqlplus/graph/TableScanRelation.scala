@@ -2,7 +2,7 @@ package sqlplus.graph
 
 import sqlplus.expression.Variable
 
-class TableScanRelation(val tableName: String, val variables: List[Variable], val tableDisplayName: String, val primaryKeys: Set[Variable]) extends Relation {
+class TableScanRelation(val tableName: String, val variables: List[Variable], val tableDisplayName: String, val primaryKeys: Set[Variable], val cardinality: Long) extends Relation {
     def getTableName(): String = tableName
 
     override def getVariableList(): List[Variable] = variables
@@ -18,6 +18,8 @@ class TableScanRelation(val tableName: String, val variables: List[Variable], va
 
     override def replaceVariables(map: Map[Variable, Variable]): Relation = {
         val newVariables = variables.map(v => if (map.contains(v)) map(v) else v)
-        new TableScanRelation(tableName, newVariables, tableDisplayName, primaryKeys)
+        new TableScanRelation(tableName, newVariables, tableDisplayName, primaryKeys, cardinality)
     }
+
+    override def getCardinality(): Long = cardinality
 }

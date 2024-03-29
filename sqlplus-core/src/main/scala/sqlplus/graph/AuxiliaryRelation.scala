@@ -17,6 +17,8 @@ class AuxiliaryRelation(val tableName: String, val variables: List[Variable], va
     override def getPrimaryKeys(): Set[Variable] = primaryKeys
 
     override def replaceVariables(map: Map[Variable, Variable]): Relation = throw new UnsupportedOperationException()
+
+    override def getCardinality(): Long = 0
 }
 
 object AuxiliaryRelation {

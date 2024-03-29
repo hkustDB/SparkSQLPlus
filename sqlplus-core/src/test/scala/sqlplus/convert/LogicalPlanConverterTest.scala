@@ -406,4 +406,149 @@ class LogicalPlanConverterTest {
         assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g4"))
         assertTrue(runResult.candidates.forall(t => t._1.subset.isEmpty))
     }
+
+    @Test
+    def testFixRoot(): Unit = {
+        val ddl =
+            """
+              |CREATE TABLE nation
+              |(
+              |    n_nationkey INTEGER,
+              |    n_name      VARCHAR,
+              |    n_regionkey INTEGER,
+              |    n_comment   VARCHAR,
+              |    PRIMARY KEY (n_nationkey)
+              |) WITH (
+              |    'cardinality' = '25'
+              |);
+              |
+              |CREATE TABLE region
+              |(
+              |    r_regionkey INTEGER,
+              |    r_name      VARCHAR,
+              |    r_comment   VARCHAR,
+              |    PRIMARY KEY (r_regionkey)
+              |) WITH (
+              |      'cardinality' = '5'
+              |);
+              |
+              |CREATE TABLE part
+              |(
+              |    p_partkey     INTEGER,
+              |    p_name        VARCHAR,
+              |    p_mfgr        VARCHAR,
+              |    p_brand       VARCHAR,
+              |    p_type        VARCHAR,
+              |    p_size        INTEGER,
+              |    p_container   VARCHAR,
+              |    p_retailprice DECIMAL,
+              |    p_comment     VARCHAR,
+              |    PRIMARY KEY (p_partkey)
+              |) WITH (
+              |      'cardinality' = '200000'
+              |);
+              |
+              |CREATE TABLE supplier
+              |(
+              |    s_suppkey   INTEGER,
+              |    s_name      VARCHAR,
+              |    s_address   VARCHAR,
+              |    s_nationkey INTEGER,
+              |    s_phone     VARCHAR,
+              |    s_acctbal   DECIMAL,
+              |    s_comment   VARCHAR,
+              |    PRIMARY KEY (s_suppkey)
+              |) WITH (
+              |      'cardinality' = '10000'
+              |);
+              |
+              |CREATE TABLE customer
+              |(
+              |    c_custkey    INTEGER,
+              |    c_name       VARCHAR,
+              |    c_address    VARCHAR,
+              |    c_nationkey  INTEGER,
+              |    c_phone      VARCHAR,
+              |    c_acctbal    DECIMAL,
+              |    c_mktsegment VARCHAR,
+              |    c_comment    VARCHAR,
+              |    PRIMARY KEY (c_custkey)
+              |) WITH (
+              |     'cardinality' = '150000'
+              |);
+              |
+              |CREATE TABLE orders
+              |(
+              |    o_orderkey      INTEGER,
+              |    o_custkey       INTEGER,
+              |    o_orderstatus   VARCHAR,
+              |    o_totalprice    DECIMAL,
+              |    o_orderdate     DATE,
+              |    o_orderpriority VARCHAR,
+              |    o_clerk         VARCHAR,
+              |    o_shippriority  INTEGER,
+              |    o_comment       VARCHAR,
+              |    PRIMARY KEY (o_orderkey)
+              |) WITH (
+              |     'cardinality' = '1500000'
+              |);
+              |
+              |CREATE TABLE lineitem
+              |(
+              |    l_orderkey      INTEGER,
+              |    l_partkey       INTEGER,
+              |    l_suppkey       INTEGER,
+              |    l_linenumber    INTEGER,
+              |    l_quantity      DECIMAL,
+              |    l_extendedprice DECIMAL,
+              |    l_discount      DECIMAL,
+              |    l_tax           DECIMAL,
+              |    l_returnflag    VARCHAR,
+              |    l_linestatus    VARCHAR,
+              |    l_shipdate      DATE,
+              |    l_commitdate    DATE,
+              |    l_receiptdate   DATE,
+              |    l_shipinstruct  VARCHAR,
+              |    l_shipmode      VARCHAR,
+              |    l_comment       VARCHAR,
+              |    PRIMARY KEY (l_orderkey, l_linenumber)
+              |) WITH (
+              |      'cardinality' = '6001215'
+              |);
+              |""".stripMargin
+        val dml =
+            """
+              |SELECT c_custkey,
+              |       c_name,
+              |       SUM(l_extendedprice * (1 - l_discount)) AS revenue,
+              |       c_acctbal,
+              |       n_name,
+              |       c_address,
+              |       c_phone,
+              |       c_comment
+              |FROM customer,
+              |     orders,
+              |     lineitem,
+              |     nation
+              |WHERE c_custkey = o_custkey
+              |  AND l_orderkey = o_orderkey
+              |  AND o_orderdate >= DATE '1993-10-01'
+              |  AND o_orderdate < DATE '1994-01-01'
+              |  AND l_returnflag = 'R'
+              |  AND c_nationkey = n_nationkey
+              |GROUP BY c_custkey, c_name, c_acctbal, c_phone, n_name, c_address, c_comment
+              |""".stripMargin
+
+        val nodeList = SqlPlusParser.parseDdl(ddl)
+        val catalogManager = new CatalogManager
+        catalogManager.register(nodeList)
+        val sqlNode = SqlPlusParser.parseDml(dml)
+        val sqlPlusPlanner = new SqlPlusPlanner(catalogManager)
+        val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
+        val variableManager = new VariableManager
+        val converter = new LogicalPlanConverter(variableManager, catalogManager)
+        val runResult = converter.run(logicalPlan, true)
+
+        assertTrue(runResult.candidates.forall(c => c._1.isFixRoot && c._1.root.getTableDisplayName() == "lineitem"))
+    }
 }

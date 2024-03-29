@@ -24,4 +24,8 @@ class AggregatedRelation(val tableName: String, val variables: List[Variable],
         val newVariables = variables.map(v => if (map.contains(v)) map(v) else v)
         new AggregatedRelation(tableName, newVariables, group, func, tableDisplayName)
     }
+
+    override def getCardinality(): Long = {
+        0
+    }
 }

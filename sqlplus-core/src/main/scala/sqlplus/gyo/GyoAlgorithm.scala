@@ -1,7 +1,6 @@
 package sqlplus.gyo
 
-import sqlplus.convert.{ExtraEqualToCondition, ExtraCondition}
-import sqlplus.expression.{SingleVariableExpression, Variable, VariableManager}
+import sqlplus.expression.Variable
 import sqlplus.graph._
 import sqlplus.gyo
 
@@ -12,90 +11,16 @@ import scala.collection.mutable.ListBuffer
  * This algorithm is modeled as a BFS search of valid states. A state contains a forest and the remaining hyperGraph.
  */
 class GyoAlgorithm {
-    def run(variableManager: VariableManager, hyperGraph: RelationalHyperGraph, outputVariables: Set[Variable], terminateIfNonFreeConnex: Boolean): List[GyoResult] = {
-        val optGyoResult = runAlgorithm(hyperGraph, outputVariables, terminateIfNonFreeConnex)
-        if (optGyoResult.nonEmpty) {
-            List(optGyoResult.get)
-        } else {
-            val reachable: mutable.HashMap[Relation, mutable.HashSet[Relation]] = mutable.HashMap.empty
-            val inDegree: mutable.HashMap[Relation, Int] = mutable.HashMap.empty
-            hyperGraph.getEdges().foreach(r => inDegree(r) = 0)
-
-            for {
-                r1 <- hyperGraph.getEdges()
-                r2 <- hyperGraph.getEdges()
-                if r1.relationId < r2.relationId
-            } {
-                val overlap = r1.getNodes().intersect(r2.getNodes())
-                if (overlap.nonEmpty) {
-                    if (r1.getPrimaryKeys().nonEmpty && r1.getPrimaryKeys().subsetOf(overlap)) {
-                        reachable.getOrElseUpdate(r2, mutable.HashSet.empty[Relation]).add(r1)
-                        inDegree(r1) = inDegree(r1) + 1
-                    } else if (r2.getPrimaryKeys().nonEmpty && r2.getPrimaryKeys().subsetOf(overlap)) {
-                        reachable.getOrElseUpdate(r1, mutable.HashSet.empty[Relation]).add(r2)
-                        inDegree(r2) = inDegree(r2) + 1
-                    }
-                }
-            }
-
-            if (inDegree.count(t => t._2 == 0) != 1) {
-                // we can handle one fact table only
-                return List.empty
-            }
-
-            val fact = inDegree.find(t => t._2 == 0).get._1
-            val queue = mutable.Queue.empty[Relation]
-            val seen = mutable.Set.empty[Relation]
-            val hit = mutable.Set.empty[Relation]       // more than one path starting from fact meet on these relations
-
-            queue.enqueue(fact)
-
-            while (queue.nonEmpty) {
-                val head = queue.dequeue()
-                if (!seen.contains(head)) {
-                    seen.add(head)
-                    if (reachable.contains(head)) {
-                        reachable(head).foreach(r => queue.enqueue(r))
-                    }
-                } else {
-                    hit.add(head)
-                }
-            }
-
-            if (seen.size < hyperGraph.getEdges().size) {
-                // some relation is unreachable from the fact table
-                return List.empty
-            }
-
-            if (hit.size > 1 || hit.isEmpty) {
-                return List.empty
-            }
-
-            val parents = hyperGraph.getEdges().filter(r => reachable.contains(r) && reachable(r).contains(hit.head))
-            val optGyoResults = parents.map(p => {
-                val toBreak = parents - p
-                val hitVariables = hit.head.getVariableList().toSet
-                var updatedHyperGraph = hyperGraph
-                val extraEqualConditions = ListBuffer.empty[ExtraCondition]
-
-                toBreak.foreach(r => {
-                    updatedHyperGraph = updatedHyperGraph.removeHyperEdge(r)
-                    val intersect = hitVariables.intersect(r.getVariableList().toSet)
-                    val replace = intersect.map(v => (v, variableManager.getNewVariable(v.dataType)))
-                    val newHyperEdge = r.replaceVariables(replace.toMap)
-                    updatedHyperGraph = updatedHyperGraph.addHyperEdge(newHyperEdge)
-                    extraEqualConditions.appendAll(replace.map(t => ExtraEqualToCondition(SingleVariableExpression(t._1), SingleVariableExpression(t._2))))
-                })
-
-                val optGyoResult = runAlgorithm(updatedHyperGraph, outputVariables, terminateIfNonFreeConnex)
-                // add the extraEqualConditions to GyoResults
-                optGyoResult.map(result => GyoResult(result.candidates, result.isFreeConnex, result.extraEqualConditions ++ extraEqualConditions.toList))
-            })
-            optGyoResults.filter(opt => opt.nonEmpty).map(opt => opt.get).toList
-        }
+    def run(hyperGraph: RelationalHyperGraph, outputVariables: Set[Variable]): GyoResult = {
+        runAlgorithm(hyperGraph, outputVariables, null)
     }
 
-    private def runAlgorithm(hyperGraph: RelationalHyperGraph, outputVariables: Set[Variable], terminateIfNonFreeConnex: Boolean): Option[GyoResult] = {
+    def runWithFixRoot(hyperGraph: RelationalHyperGraph, fixRootRelation: Relation): GyoResult = {
+        // run the algorithm with outputVariables = all variables
+        runAlgorithm(hyperGraph, hyperGraph.getEdges().flatMap(r => r.getNodes()), fixRootRelation)
+    }
+
+    private def runAlgorithm(hyperGraph: RelationalHyperGraph, outputVariables: Set[Variable], fixRootRelation: Relation): GyoResult = {
         val initState = new GyoState(hyperGraph, Forest.create(hyperGraph))
         var isFreeConnex = true
 
@@ -196,6 +121,7 @@ class GyoAlgorithm {
                 x <- remaining
                 y <- remaining
                 if x != y && x.getNodes().intersect(y.getNodes()).nonEmpty
+                if x != fixRootRelation     // reducing the fixed root relation is not allowed
             } {
                 if (x.getNodes().subsetOf(y.getNodes()))
                     reductions.append((x, y))
@@ -243,15 +169,9 @@ class GyoAlgorithm {
 
         assert(stableStates.nonEmpty)
 
-        // terminate if
-        // 1. outputVariables.nonEmpty, and
-        // 2. there is some non-output variables in stable state. e.g., R(A,B) x S(B,C), output = [A,C], and
-        // 3. terminateIfNonFreeConnex is set.
         if (outputVariables.nonEmpty &&
             stableStates.exists(s => s.getRelationalHyperGraph.getEdges().exists(r => r.getNodes().exists(v => !outputVariables.contains(v))))) {
             isFreeConnex = false
-            if (terminateIfNonFreeConnex)
-                return None
         }
 
         // phase 2
@@ -279,13 +199,14 @@ class GyoAlgorithm {
         // in final state, there should be only one relation in hyperGraph
         if (finalStates.map(t => t._1).forall(fs => fs.getRelationalHyperGraph.getEdges().size == 1)) {
             val rootsAndSubset = finalStates.map(s => (s._1.getForest.getTree(s._1.getRelationalHyperGraph.getEdges().head), s._2)).toList
-            Some(GyoResult(rootsAndSubset.map(ras => {
+            val candidates = rootsAndSubset.map(ras => {
                 val (root, edges, hyperGraph) = convertToJoinTreeWithHyperGraph(ras._1)
-                val joinTree = JoinTree(root, edges, if (outputVariables.nonEmpty) ras._2.intersect(hyperGraph.getEdges()) else Set())
+                val joinTree = JoinTree(root, edges, if (outputVariables.nonEmpty) ras._2.intersect(hyperGraph.getEdges()) else Set(), fixRootRelation != null)
                 (joinTree, hyperGraph)
-            }), isFreeConnex, List.empty))
+            })
+            GyoResult(candidates, isFreeConnex, List.empty)
         } else {
-            None
+            throw new IllegalStateException("some final states have more than 1 relation")
         }
     }
 
@@ -311,5 +232,47 @@ class GyoAlgorithm {
                 val graph = childrenResult._2.foldLeft(RelationalHyperGraph.EMPTY)((g, r) => g.addHyperEdge(r)).addHyperEdge(relation)
                 (relation, childrenResult._1, graph)
         }
+    }
+
+    def isAcyclic(hyperGraph: RelationalHyperGraph): Boolean = {
+        def nextGraph(inputHyperGraph: RelationalHyperGraph): Option[RelationalHyperGraph] = {
+            val remaining = inputHyperGraph.getEdges()
+            val reductions = ListBuffer.empty[(Relation, Relation)]
+            val removes = ListBuffer.empty[(Relation, Set[Variable])]
+
+            for {
+                x <- remaining
+                y <- remaining
+                if x != y && x.getNodes().intersect(y.getNodes()).nonEmpty
+            } {
+                if (x.getNodes().subsetOf(y.getNodes()))
+                    reductions.append((x, y))
+                else {
+                    val diff = x.getNodes() -- y.getNodes()
+                    if (diff.forall(v => remaining.forall(r => r == x || !r.getNodes().contains(v)))) {
+                        removes.append((x, diff))
+                    }
+                }
+            }
+
+            if (reductions.nonEmpty) {
+                Some(inputHyperGraph.removeHyperEdge(reductions.head._1))
+            } else if (removes.nonEmpty) {
+                val (relation, variables) = removes.head
+                Some(inputHyperGraph.removeHyperEdge(relation).addHyperEdge(relation.removeVariables(variables)))
+            } else {
+                None
+            }
+        }
+
+        var currentHyperGraph = hyperGraph
+        var optNextGraph = nextGraph(currentHyperGraph)
+        while (optNextGraph.nonEmpty) {
+            currentHyperGraph = optNextGraph.get
+            optNextGraph = nextGraph(currentHyperGraph)
+        }
+
+        // acyclic if we can reduce the input hyperGraph until a single relation is left
+        currentHyperGraph.getEdges().size == 1
     }
 }

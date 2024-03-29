@@ -24,6 +24,8 @@ class BagRelation(bag: Set[Relation]) extends Relation {
     override def getPrimaryKeys(): Set[Variable] = Set.empty
 
     override def replaceVariables(map: Map[Variable, Variable]): Relation = throw new UnsupportedOperationException()
+
+    override def getCardinality(): Long = 0
 }
 
 object BagRelation {

@@ -19,15 +19,15 @@ class GhdAlgorithmTest {
         val v5 = variableManager.getNewVariable(IntDataType)
         val v6 = variableManager.getNewVariable(IntDataType)
 
-        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty)
-        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty)
-        val r3 = new TableScanRelation("R3", List(v3, v1), "R3", Set.empty)
+        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty, 0)
+        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty, 0)
+        val r3 = new TableScanRelation("R3", List(v3, v1), "R3", Set.empty, 0)
 
-        val r4 = new TableScanRelation("R4", List(v4, v5), "R4", Set.empty)
-        val r5 = new TableScanRelation("R5", List(v5, v6), "R5", Set.empty)
-        val r6 = new TableScanRelation("R6", List(v6, v4), "R6", Set.empty)
+        val r4 = new TableScanRelation("R4", List(v4, v5), "R4", Set.empty, 0)
+        val r5 = new TableScanRelation("R5", List(v5, v6), "R5", Set.empty, 0)
+        val r6 = new TableScanRelation("R6", List(v6, v4), "R6", Set.empty, 0)
 
-        val r7 = new TableScanRelation("R7", List(v3, v4), "R7", Set.empty)
+        val r7 = new TableScanRelation("R7", List(v3, v4), "R7", Set.empty, 0)
 
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
             .addHyperEdge(r4).addHyperEdge(r5).addHyperEdge(r6).addHyperEdge(r7)
@@ -71,15 +71,15 @@ class GhdAlgorithmTest {
         val v5 = variableManager.getNewVariable(IntDataType)
         val v6 = variableManager.getNewVariable(IntDataType)
 
-        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty)
-        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty)
-        val r3 = new TableScanRelation("R3", List(v3, v1), "R3", Set.empty)
+        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty, 0)
+        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty, 0)
+        val r3 = new TableScanRelation("R3", List(v3, v1), "R3", Set.empty, 0)
 
-        val r4 = new TableScanRelation("R4", List(v4, v5), "R4", Set.empty)
-        val r5 = new TableScanRelation("R5", List(v5, v6), "R5", Set.empty)
-        val r6 = new TableScanRelation("R6", List(v6, v4), "R6", Set.empty)
+        val r4 = new TableScanRelation("R4", List(v4, v5), "R4", Set.empty, 0)
+        val r5 = new TableScanRelation("R5", List(v5, v6), "R5", Set.empty, 0)
+        val r6 = new TableScanRelation("R6", List(v6, v4), "R6", Set.empty, 0)
 
-        val r7 = new TableScanRelation("R7", List(v3, v4), "R7", Set.empty)
+        val r7 = new TableScanRelation("R7", List(v3, v4), "R7", Set.empty, 0)
 
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
             .addHyperEdge(r4).addHyperEdge(r5).addHyperEdge(r6).addHyperEdge(r7)
@@ -127,14 +127,14 @@ class GhdAlgorithmTest {
         val v8 = variableManager.getNewVariable(IntDataType)
         val v9 = variableManager.getNewVariable(IntDataType)
 
-        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty)
-        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty)
-        val r3 = new TableScanRelation("R3", List(v3, v4), "R3", Set.empty)
-        val r4 = new TableScanRelation("R4", List(v4, v5), "R4", Set.empty)
-        val r5 = new TableScanRelation("R5", List(v5, v6), "R5", Set.empty)
-        val r6 = new TableScanRelation("R6", List(v5, v7), "R6", Set.empty)
-        val r7 = new TableScanRelation("R7", List(v7, v8), "R7", Set.empty)
-        val r8 = new TableScanRelation("R8", List(v7, v9), "R8", Set.empty)
+        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty, 0)
+        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty, 0)
+        val r3 = new TableScanRelation("R3", List(v3, v4), "R3", Set.empty, 0)
+        val r4 = new TableScanRelation("R4", List(v4, v5), "R4", Set.empty, 0)
+        val r5 = new TableScanRelation("R5", List(v5, v6), "R5", Set.empty, 0)
+        val r6 = new TableScanRelation("R6", List(v5, v7), "R6", Set.empty, 0)
+        val r7 = new TableScanRelation("R7", List(v7, v8), "R7", Set.empty, 0)
+        val r8 = new TableScanRelation("R8", List(v7, v9), "R8", Set.empty, 0)
 
 
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)

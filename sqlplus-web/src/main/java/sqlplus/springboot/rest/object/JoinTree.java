@@ -11,6 +11,7 @@ public class JoinTree {
     int maxFanout;
     List<Comparison> comparisons = new ArrayList<>();
     List<String> extraConditions = new ArrayList<>();
+    boolean isFixRoot;
 
     public List<JoinTreeNode> getNodes() {
         return nodes;
@@ -66,5 +67,13 @@ public class JoinTree {
 
     public void setExtraConditions(List<String> extraConditions) {
         this.extraConditions = extraConditions;
+    }
+
+    public boolean isFixRoot() {
+        return isFixRoot;
+    }
+
+    public void setFixRoot(boolean fixRoot) {
+        isFixRoot = fixRoot;
     }
 }
