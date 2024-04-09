@@ -549,6 +549,10 @@ class LogicalPlanConverterTest {
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
         val runResult = converter.run(logicalPlan, true)
 
-        assertTrue(runResult.candidates.forall(c => c._1.isFixRoot && c._1.root.getTableDisplayName() == "lineitem"))
+        assertTrue(runResult.candidates.forall(c => {
+            (c._1.isFixRoot && c._1.root.getTableDisplayName() == "lineitem") ||
+                (!c._1.isFixRoot && c._1.root.asInstanceOf[AuxiliaryRelation].supportingRelation.getTableDisplayName() == "customer") ||
+                (!c._1.isFixRoot && c._1.root.asInstanceOf[AuxiliaryRelation].supportingRelation.getTableDisplayName() == "nation")
+        }))
     }
 }

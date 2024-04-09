@@ -127,12 +127,18 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         // 1. It is an aggregation query
         // 2. Every relation have cardinality > 0
         // 3. Every relation have nonempty Primary Key
-        // 4. The variables in the largest relation (any of them if there are more than one) determines the group by variables
+        // 4. The largest relation does not contain any group by variables
+        //  (the plan will be returned by GYO without fix root if the largest relation contains some group by variables)
+        // 5. The variables in the largest relation determines the group by variables
         if (!isAggregation || relationalHyperGraph.getEdges().exists(r => r.getCardinality() <= 0 || r.getPrimaryKeys().isEmpty))
             return None
 
         val largestCardinality = relationalHyperGraph.getEdges().map(r => r.getCardinality()).max
         val largestRelations = relationalHyperGraph.getEdges().filter(r => r.getCardinality() == largestCardinality)
+
+        if (largestRelations.exists(r => r.getNodes().intersect(groupByVariables).nonEmpty)) {
+            return None
+        }
 
         val chaseVariables = mutable.HashMap.empty[Relation, Set[Variable]]
         relationalHyperGraph.getEdges().foreach(r => {
@@ -162,21 +168,28 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
     def runGyo(relationalHyperGraph: RelationalHyperGraph, fixRootEnable: Boolean,
                aggregations: List[(Variable, String, List[Expression])],
                requiredVariables: Set[Variable], groupByVariables: Set[Variable]): (List[(JoinTree, RelationalHyperGraph, List[ExtraCondition])], Boolean) = {
+        // first run GYO without fixRoot
+        val gyoResult = gyo.run(relationalHyperGraph, if (aggregations.isEmpty) requiredVariables else groupByVariables)
+        val withoutFixRoot = (gyoResult.candidates.map(t => (t._1, t._2, List.empty)), gyoResult.isFreeConnex)
+
         // if fixRoot is set, try to fix the root as the largest relation
         if (fixRootEnable) {
             val optFixRoot = tryFixRoot(relationalHyperGraph, aggregations.nonEmpty, groupByVariables)
             if (optFixRoot.nonEmpty) {
                 val fixRootRelation = optFixRoot.get
                 val gyoResult = gyo.runWithFixRoot(relationalHyperGraph, fixRootRelation)
-                (gyoResult.candidates.map(t => (t._1, t._2, List.empty)), gyoResult.isFreeConnex)
+                val withFixRoot = (gyoResult.candidates.map(t => (t._1, t._2, List.empty)), gyoResult.isFreeConnex)
+
+                // return the union of withFixRoot and withoutFixRoot
+                // isFreeConnex is useless when fixRoot is ON
+                (withoutFixRoot._1 ++ withFixRoot._1, withoutFixRoot._2)
             } else {
-                // failed to fix root, fall back to standard GYO Algorithm
-                val gyoResult = gyo.run(relationalHyperGraph, if (aggregations.isEmpty) requiredVariables else groupByVariables)
-                (gyoResult.candidates.map(t => (t._1, t._2, List.empty)), gyoResult.isFreeConnex)
+                // unable to fix root
+                withoutFixRoot
             }
         } else {
-            val gyoResult = gyo.run(relationalHyperGraph, if (aggregations.isEmpty) requiredVariables else groupByVariables)
-            (gyoResult.candidates.map(t => (t._1, t._2, List.empty)), gyoResult.isFreeConnex)
+            // fix root disabled
+            withoutFixRoot
         }
     }
 
