@@ -167,9 +167,9 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
 
     def runGyo(relationalHyperGraph: RelationalHyperGraph, fixRootEnable: Boolean,
                aggregations: List[(Variable, String, List[Expression])],
-               requiredVariables: Set[Variable], groupByVariables: Set[Variable]): (List[(JoinTree, RelationalHyperGraph, List[ExtraCondition])], Boolean) = {
+               groupByVariables: Set[Variable], topVariables: Set[Variable]): (List[(JoinTree, RelationalHyperGraph, List[ExtraCondition])], Boolean) = {
         // first run GYO without fixRoot
-        val gyoResult = gyo.run(relationalHyperGraph, if (aggregations.isEmpty) requiredVariables else groupByVariables)
+        val gyoResult = gyo.run(relationalHyperGraph, topVariables)
         val withoutFixRoot = (gyoResult.candidates.map(t => (t._1, t._2, List.empty)), gyoResult.isFreeConnex)
 
         // if fixRoot is set, try to fix the root as the largest relation
@@ -206,9 +206,11 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         val optTopK = context.optTopK
         val relationalHyperGraph = relations.foldLeft(RelationalHyperGraph.EMPTY)((g, r) => g.addHyperEdge(r))
 
+        val topVariables = if (aggregations.nonEmpty && groupByVariables.nonEmpty) groupByVariables.toSet else requiredVariables
+
         val (candidatesFromResults, isFreeConnex) = if (isAcyclic(relationalHyperGraph)) {
             // for acyclic queries, run GYO Algorithm
-            runGyo(relationalHyperGraph, fixRootEnable, aggregations, requiredVariables, groupByVariables.toSet)
+            runGyo(relationalHyperGraph, fixRootEnable, aggregations, groupByVariables.toSet, topVariables)
         } else {
             // try to break cyclic queries
             val optBreakResult = break(relationalHyperGraph)
@@ -218,7 +220,7 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
                 val runGyoResult = hyperGraphAndExtraConditions.map(t => {
                     val hyperGraph = t._1
                     val extraConditions = t._2
-                    val (candidates, isFreeConnex) =  runGyo(hyperGraph, fixRootEnable, aggregations, requiredVariables, groupByVariables.toSet)
+                    val (candidates, isFreeConnex) =  runGyo(hyperGraph, fixRootEnable, aggregations, groupByVariables.toSet, topVariables)
                     val candidatesWithExtraConditions = candidates.map(t => (t._1, t._2, t._3 ++ extraConditions))
                     (candidatesWithExtraConditions, isFreeConnex)
                 })
@@ -231,7 +233,7 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
                 }
             } else {
                 // for unbreakable cyclic queries, run GHD Algorithm
-                val ghdResult = ghd.run(relationalHyperGraph, if (aggregations.isEmpty || groupByVariables.isEmpty) requiredVariables else groupByVariables.toSet)
+                val ghdResult = ghd.run(relationalHyperGraph, topVariables)
                 // There is no extra condition in GHD plans
                 (ghdResult.candidates.map(t => (t._1, t._2, List.empty)), false)
             }
@@ -371,10 +373,14 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         val context = visitJoins(logicalAggregate.getInput)
 
         val groupByVariables = logicalAggregate.getGroupSet.asList().map(_.toInt).map(i => context.outputVariables(i)).toList
-        val aggregations = logicalAggregate.getAggCallList.toList.map(c => {
+        val aggregations = ListBuffer.empty[(Variable, String, List[Expression])]
+        logicalAggregate.getAggCallList.toList.foreach(c => {
             val aggregateFunction = c.getAggregation.getName
             val aggregateArguments = c.getArgList.toList.map(i => context.computations.getOrElse(context.outputVariables(i), SingleVariableExpression(context.outputVariables(i))))
-            (variableManager.getNewVariable(DataType.fromSqlType(c.getType.getSqlTypeName)), aggregateFunction, aggregateArguments)
+            val variable = variableManager.getNewVariable(DataType.fromSqlType(c.getType.getSqlTypeName))
+            context.dependingVariables(variable) = c.getArgList.toList.flatMap(i => context.dependingVariables(context.outputVariables(i))).toSet
+            val triple = (variable, aggregateFunction, aggregateArguments)
+            aggregations.append(triple)
         })
         // the output of logicalAggregate is always groupByVariables followed by aggregation columns
         val aggregateOutputVariables = groupByVariables ++ aggregations.map(t => t._1)
@@ -382,27 +388,32 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         val computations = mutable.HashMap.empty[Variable, Expression]  // additional computations(in LogicalProject)
         if (optLogicalProject.isEmpty) {
             context.outputVariables = aggregateOutputVariables
+            context.requiredVariables = aggregations.map(t => t._1).flatMap(v => context.dependingVariables(v)).toSet
         } else {
-            val outputVariables = optLogicalProject.get.getProjects.toList.map({
+            val outputVariables = ListBuffer.empty[Variable]
+            optLogicalProject.get.getProjects.toList.foreach({
                 case call: RexCall =>
                     val expr = convertRexCallToExpression(call, aggregateOutputVariables)
                     val variable = variableManager.getNewVariable(DataType.fromSqlType(call.getType.getSqlTypeName))
                     computations(variable) = expr
-                    variable
+                    context.dependingVariables(variable) = expr.getVariables().flatMap(v => context.dependingVariables(v))
+                    outputVariables.append(variable)
                 case inputRef: RexInputRef =>
                     val variable = aggregateOutputVariables(inputRef.getIndex)
-                    variable
+                    outputVariables.append(variable)
                 case literal: RexLiteral =>
                     val expr = convertRexLiteralToExpression(literal)
                     val variable = variableManager.getNewVariable(DataType.fromSqlType(literal.getType.getSqlTypeName))
                     computations(variable) = expr
-                    variable
+                    context.dependingVariables(variable) = Set()
+                    outputVariables.append(variable)
             })
-            context.outputVariables = outputVariables
+            context.outputVariables = outputVariables.toList
+            context.requiredVariables = (context.outputVariables.flatMap(v => context.dependingVariables(v)).toSet -- groupByVariables)
             context.computations = context.computations ++ computations.toMap
         }
         context.groupByVariables = groupByVariables
-        context.aggregations = aggregations
+        context.aggregations = aggregations.toList
 
         context
     }
@@ -503,33 +514,31 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
 
         val computations = mutable.HashMap.empty[Variable, Expression]  // additional computations(in LogicalProject)
         val context = new Context
+        variableList.foreach(v => context.dependingVariables(v) = Set(v))
         if (optLogicalProject.isEmpty) {
-            // this happens when we have aggregation over joins, set outputVariables to variableTable directly
             context.outputVariables = variableList
-            context.requiredVariables = context.outputVariables.toSet
             context.computations = computations.toMap
         } else {
             val outputVariablesBuffer = ListBuffer.empty[Variable]
-            val requiredVariablesSet = mutable.HashSet.empty[Variable]
             optLogicalProject.get.getProjects.toList.foreach({
                 case call: RexCall =>
                     val expr = convertRexCallToExpression(call, variableList)
                     val variable = variableManager.getNewVariable(DataType.fromSqlType(call.getType.getSqlTypeName))
                     computations(variable) = expr
                     outputVariablesBuffer.append(variable)
-                    requiredVariablesSet.addAll(expr.getVariables())
+                    context.dependingVariables(variable) = expr.getVariables()
                 case inputRef: RexInputRef =>
                     val variable = variableList(inputRef.getIndex)
                     outputVariablesBuffer.append(variable)
-                    requiredVariablesSet.add(variable)
                 case literal: RexLiteral =>
                     val expr = convertRexLiteralToExpression(literal)
                     val variable = variableManager.getNewVariable(DataType.fromSqlType(literal.getType.getSqlTypeName))
                     computations(variable) = expr
                     outputVariablesBuffer.append(variable)
+                    context.dependingVariables(variable) = Set()
             })
             context.outputVariables = outputVariablesBuffer.toList
-            context.requiredVariables = requiredVariablesSet.toSet
+            context.requiredVariables = context.outputVariables.flatMap(v => context.dependingVariables(v)).toSet
             context.computations = computations.toMap
         }
 

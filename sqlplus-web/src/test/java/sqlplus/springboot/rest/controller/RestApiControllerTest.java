@@ -87,7 +87,7 @@ public class RestApiControllerTest {
         assertNull(data.get("topK"));
 
         // isFull
-        assertTrue((Boolean) data.get("full"));
+        assertFalse((Boolean) data.get("full"));
 
         // isFreeConnex
         assertFalse((Boolean) data.get("freeConnex"));
