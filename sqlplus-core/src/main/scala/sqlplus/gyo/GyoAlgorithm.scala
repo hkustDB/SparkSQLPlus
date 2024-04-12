@@ -11,16 +11,17 @@ import scala.collection.mutable.ListBuffer
  * This algorithm is modeled as a BFS search of valid states. A state contains a forest and the remaining hyperGraph.
  */
 class GyoAlgorithm {
-    def run(hyperGraph: RelationalHyperGraph, outputVariables: Set[Variable]): GyoResult = {
-        runAlgorithm(hyperGraph, outputVariables, null)
+    def run(hyperGraph: RelationalHyperGraph, outputVariables: Set[Variable], pruneEnable: Boolean): GyoResult = {
+        runAlgorithm(hyperGraph, outputVariables, None, pruneEnable)
     }
 
-    def runWithFixRoot(hyperGraph: RelationalHyperGraph, fixRootRelation: Relation): GyoResult = {
+    def runWithFixRoot(hyperGraph: RelationalHyperGraph, fixRootRelation: Relation, pruneEnable: Boolean): GyoResult = {
         // run the algorithm with outputVariables = all variables
-        runAlgorithm(hyperGraph, hyperGraph.getEdges().flatMap(r => r.getNodes()), fixRootRelation)
+        runAlgorithm(hyperGraph, hyperGraph.getEdges().flatMap(r => r.getNodes()), Some(fixRootRelation), pruneEnable)
     }
 
-    private def runAlgorithm(hyperGraph: RelationalHyperGraph, outputVariables: Set[Variable], fixRootRelation: Relation): GyoResult = {
+    private def runAlgorithm(hyperGraph: RelationalHyperGraph, outputVariables: Set[Variable], optFixRootRelation: Option[Relation],
+                             pruneEnable: Boolean): GyoResult = {
         val initState = new GyoState(hyperGraph, Forest.create(hyperGraph))
         var isFreeConnex = true
 
@@ -110,9 +111,11 @@ class GyoAlgorithm {
             }
         }
 
-        def phase2NextStates(stateAndSubset: (GyoState, Set[Relation])): Option[List[(GyoState, Set[Relation])]] = {
-            val gyoState = stateAndSubset._1
-            val subset = stateAndSubset._2
+        def phase2NextStates(stateWithSubsetAndOptRoot: (GyoState, Set[Relation], Option[Relation])): Option[List[(GyoState, Set[Relation], Option[Relation])]] = {
+            val gyoState = stateWithSubsetAndOptRoot._1
+            val subset = stateWithSubsetAndOptRoot._2
+            val optRoot = stateWithSubsetAndOptRoot._3
+
             val remaining = gyoState.getRelationalHyperGraph.getEdges()
             val reductions = ListBuffer.empty[(Relation, Relation)]
             val removes = ListBuffer.empty[(Relation, Set[Variable])]
@@ -121,25 +124,36 @@ class GyoAlgorithm {
                 x <- remaining
                 y <- remaining
                 if x != y && x.getNodes().intersect(y.getNodes()).nonEmpty
-                if x != fixRootRelation     // reducing the fixed root relation is not allowed
             } {
-                if (x.getNodes().subsetOf(y.getNodes()))
-                    reductions.append((x, y))
-                else {
-                    val diff = x.getNodes() -- y.getNodes()
-                    if (diff.forall(v => remaining.forall(r => r == x || !r.getNodes().contains(v)))) {
-                        removes.append((x, diff))
+                // if we have picked the root relation and x matches with the root relation,
+                // we need to skip in order to keep the root relation till the end
+                val optNeedSkip = optRoot.map(r => {
+                    x match {
+                        case aux: AuxiliaryRelation => r == aux.supportingRelation
+                        case _ => r == x
+                    }
+                })
+
+                // if optRoot is unset or we don't need to skip
+                if (optNeedSkip.isEmpty || !optNeedSkip.get) {
+                    if (x.getNodes().subsetOf(y.getNodes()))
+                        reductions.append((x, y))
+                    else {
+                        val diff = x.getNodes() -- y.getNodes()
+                        if (diff.forall(v => remaining.forall(r => r == x || !r.getNodes().contains(v)))) {
+                            removes.append((x, diff))
+                        }
                     }
                 }
             }
 
             if (reductions.nonEmpty) {
-                Some(reductions.toList.map(p => attach(p._2, p._1, gyoState.getRelationalHyperGraph, gyoState.getForest)).map(s => (s, subset)))
+                Some(reductions.toList.map(p => attach(p._2, p._1, gyoState.getRelationalHyperGraph, gyoState.getForest)).map(s => (s, subset, optRoot)))
             } else if (removes.nonEmpty) {
                 Some(removes.toList.map(p => {
                     val newRelation = p._1.removeVariables(p._2)
                     replace(newRelation, p._1, gyoState.getRelationalHyperGraph, gyoState.getForest)
-                }).map(s => (s, subset)))
+                }).map(s => (s, subset, optRoot)))
             } else {
                 None
             }
@@ -175,11 +189,26 @@ class GyoAlgorithm {
         }
 
         // phase 2
-        val finalStates = mutable.HashSet.empty[(GyoState, Set[Relation])]
-        val queue2 = mutable.Queue.empty[(GyoState, Set[Relation])]
+        val finalStates = mutable.HashSet.empty[(GyoState, Set[Relation], Option[Relation])]
+        val queue2 = mutable.Queue.empty[(GyoState, Set[Relation], Option[Relation])]
         seenStates.clear()
         // search final states from stable states
-        stableStates.foreach(state => queue2.enqueue((state, state.getRelationalHyperGraph.getEdges())))
+        stableStates.foreach(state => {
+            val optRoot = if (optFixRootRelation.nonEmpty) {
+                optFixRootRelation
+            } else {
+                // if prune is enabled, pick the plans with smallest relation at the root
+                val subsetRelations = state.getRelationalHyperGraph.getEdges()
+                val subsetRelationsWithCardinality = subsetRelations.map {
+                    case r@(relation: AuxiliaryRelation) => (r.supportingRelation, relation.supportingRelation.getCardinality())
+                    case r => (r, r.getCardinality())
+                }
+                if (pruneEnable && subsetRelationsWithCardinality.forall(t => t._2 > 0))
+                    Some(subsetRelationsWithCardinality.minBy(t => t._2)._1) else None
+            }
+
+            queue2.enqueue((state, state.getRelationalHyperGraph.getEdges(), optRoot))
+        })
         while (queue2.nonEmpty) {
             val head = queue2.dequeue()
             val next = phase2NextStates(head)
@@ -201,7 +230,7 @@ class GyoAlgorithm {
             val rootsAndSubset = finalStates.map(s => (s._1.getForest.getTree(s._1.getRelationalHyperGraph.getEdges().head), s._2)).toList
             val candidates = rootsAndSubset.map(ras => {
                 val (root, edges, hyperGraph) = convertToJoinTreeWithHyperGraph(ras._1)
-                val joinTree = JoinTree(root, edges, if (outputVariables.nonEmpty) ras._2.intersect(hyperGraph.getEdges()) else Set(), fixRootRelation != null)
+                val joinTree = JoinTree(root, edges, if (outputVariables.nonEmpty) ras._2.intersect(hyperGraph.getEdges()) else Set(), optFixRootRelation.nonEmpty)
                 (joinTree, hyperGraph)
             })
 

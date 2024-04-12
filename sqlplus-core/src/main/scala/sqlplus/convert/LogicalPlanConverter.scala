@@ -165,11 +165,11 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         largestRelations.find(r => chaseVariables(r).containsAll(groupByVariables))
     }
 
-    def runGyo(relationalHyperGraph: RelationalHyperGraph, fixRootEnable: Boolean,
+    def runGyo(relationalHyperGraph: RelationalHyperGraph, fixRootEnable: Boolean, pruneEnable: Boolean,
                aggregations: List[(Variable, String, List[Expression])],
                groupByVariables: Set[Variable], topVariables: Set[Variable]): (List[(JoinTree, RelationalHyperGraph, List[ExtraCondition])], Boolean) = {
         // first run GYO without fixRoot
-        val gyoResult = gyo.run(relationalHyperGraph, topVariables)
+        val gyoResult = gyo.run(relationalHyperGraph, topVariables, pruneEnable)
         val withoutFixRoot = (gyoResult.candidates.map(t => (t._1, t._2, List.empty)), gyoResult.isFreeConnex)
 
         // if fixRoot is set, try to fix the root as the largest relation
@@ -177,7 +177,7 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
             val optFixRoot = tryFixRoot(relationalHyperGraph, aggregations.nonEmpty, groupByVariables)
             if (optFixRoot.nonEmpty) {
                 val fixRootRelation = optFixRoot.get
-                val gyoResult = gyo.runWithFixRoot(relationalHyperGraph, fixRootRelation)
+                val gyoResult = gyo.runWithFixRoot(relationalHyperGraph, fixRootRelation, pruneEnable)
                 val withFixRoot = (gyoResult.candidates.map(t => (t._1, t._2, List.empty)), gyoResult.isFreeConnex)
 
                 // return the union of withFixRoot and withoutFixRoot
@@ -193,7 +193,7 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         }
     }
 
-    def run(root: RelNode, fixRootEnable: Boolean = false): RunResult = {
+    def run(root: RelNode, fixRootEnable: Boolean = false, pruneEnable: Boolean = true): RunResult = {
         val context = traverseLogicalPlan(root)
         val relations = context.relations
         val conditions = context.conditions
@@ -210,7 +210,7 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
 
         val (candidatesFromResults, isFreeConnex) = if (isAcyclic(relationalHyperGraph)) {
             // for acyclic queries, run GYO Algorithm
-            runGyo(relationalHyperGraph, fixRootEnable, aggregations, groupByVariables.toSet, topVariables)
+            runGyo(relationalHyperGraph, fixRootEnable, pruneEnable, aggregations, groupByVariables.toSet, topVariables)
         } else {
             // try to break cyclic queries
             val optBreakResult = break(relationalHyperGraph)
@@ -220,7 +220,7 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
                 val runGyoResult = hyperGraphAndExtraConditions.map(t => {
                     val hyperGraph = t._1
                     val extraConditions = t._2
-                    val (candidates, isFreeConnex) =  runGyo(hyperGraph, fixRootEnable, aggregations, groupByVariables.toSet, topVariables)
+                    val (candidates, isFreeConnex) =  runGyo(hyperGraph, fixRootEnable, pruneEnable, aggregations, groupByVariables.toSet, topVariables)
                     val candidatesWithExtraConditions = candidates.map(t => (t._1, t._2, t._3 ++ extraConditions))
                     (candidatesWithExtraConditions, isFreeConnex)
                 })
