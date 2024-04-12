@@ -3,7 +3,7 @@ package sqlplus.gyo
 import org.junit.Assert.{assertFalse, assertTrue}
 import org.junit.Test
 import sqlplus.expression.VariableManager
-import sqlplus.graph.{AuxiliaryRelation, RelationalHyperGraph, TableScanRelation}
+import sqlplus.graph.{RelationalHyperGraph, TableScanRelation}
 import sqlplus.types.IntDataType
 
 class GyoAlgorithmTest {
@@ -205,5 +205,32 @@ class GyoAlgorithmTest {
 
         val joinTrees = result.candidates.map(t => t._1)
         assertTrue(joinTrees.forall(t => t.root == r2))
+    }
+
+    @Test
+    def testPruning2(): Unit = {
+        val algorithm = new GyoAlgorithm
+
+        val variableManager = new VariableManager
+        val v1 = variableManager.getNewVariable(IntDataType)
+        val v2 = variableManager.getNewVariable(IntDataType)
+        val v3 = variableManager.getNewVariable(IntDataType)
+        val v4 = variableManager.getNewVariable(IntDataType)
+        val v5 = variableManager.getNewVariable(IntDataType)
+        val v6 = variableManager.getNewVariable(IntDataType)
+        val v7 = variableManager.getNewVariable(IntDataType)
+
+        val r1 = new TableScanRelation("R1", List(v1, v2), "R1", Set.empty, 999)
+        val r2 = new TableScanRelation("R2", List(v2, v3), "R2", Set.empty, 2)
+        val r3 = new TableScanRelation("R3", List(v2, v4), "R3", Set.empty, 3)
+        val r4 = new TableScanRelation("R4", List(v2, v5), "R4", Set.empty, 4)
+        val r5 = new TableScanRelation("R5", List(v2, v6), "R5", Set.empty, 5)
+        val r6 = new TableScanRelation("R6", List(v2, v7), "R6", Set.empty, 6)
+
+        val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3).addHyperEdge(r4).addHyperEdge(r5).addHyperEdge(r6)
+
+        val result = algorithm.runWithFixRoot(hyperGraph, r1, true)
+        val joinTrees = result.candidates.map(t => t._1)
+        assertTrue(joinTrees.forall(t => t.getEdges().count(e => e.getSrc == t.root || e.getDst == t.root) < 4))
     }
 }
