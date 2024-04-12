@@ -17,18 +17,26 @@ object GhdScoreAssigner {
 
     private def loop(effective: ListBuffer[(Set[Variable], Set[Variable])]): Unit = {
         val size = effective.size
-        for (i <- 0 until (size - 2)) {
-            for (j <- (i+1) until (size - 1)) {
+        for (i <- 0.until(size - 1)) {
+            for (j <- (i + 1).until(size)) {
                 val e1 = effective(i)
                 val e2 = effective(j)
                 if (e2._1 subsetOf e1._2) {
-                    // pk(e2) is in cols(e1)
-                    // merge cols(e1) with cols(e2)
-                    effective(i) = (e1._1, e1._2.union(e2._2))
-                    effective.remove(j)
-                    // try another merge
-                    loop(effective)
-                    return
+                    // e2.pk is in e1.cols
+                    // add e2.cols into e1.cols
+                    if (!e2._2.subsetOf(e1._2)) {
+                        effective(i) = (e1._1, e1._2.union(e2._2))
+                        loop(effective)
+                        return
+                    }
+                } else if (e1._1 subsetOf e2._2) {
+                    // e1.pk is in e2.cols
+                    // add e1.cols into e2.cols
+                    if (!e1._2.subsetOf(e2._2)) {
+                        effective(j) = (e2._1, e2._2.union(e1._2))
+                        loop(effective)
+                        return
+                    }
                 }
             }
         }
@@ -43,7 +51,6 @@ object GhdScoreAssigner {
             relations.foreach(r => effective.append(
                 (if (r.getPrimaryKeys().nonEmpty) r.getPrimaryKeys() else r.getVariableList().toSet,
                     r.getVariableList().toSet)))
-            // try to merge relations using key dependency
             loop(effective)
 
             val variables = effective.flatMap(e => e._2).distinct.toList
