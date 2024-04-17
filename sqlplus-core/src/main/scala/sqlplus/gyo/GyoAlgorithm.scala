@@ -235,7 +235,11 @@ class GyoAlgorithm {
             })
 
             val finalCandidates = if (outputVariables.nonEmpty) candidates.filter(c => c._1.root.getNodes().intersect(outputVariables).nonEmpty) else candidates
-            val filteredCandidates = if (pruneEnable) finalCandidates.filter(t => t._1.getEdges().count(e => e.getSrc == t._1.root || e.getDst == t._1.root) < 4) else finalCandidates
+            val filteredCandidates = if (pruneEnable)
+                finalCandidates.filter(t => !t._1.isFixRoot || (t._1.getEdges().count(e => e.getSrc == t._1.root || e.getDst == t._1.root) < 4))
+            else
+                finalCandidates
+
             GyoResult(filteredCandidates, isFreeConnex, List.empty)
         } else {
             throw new IllegalStateException("some final states have more than 1 relation")
