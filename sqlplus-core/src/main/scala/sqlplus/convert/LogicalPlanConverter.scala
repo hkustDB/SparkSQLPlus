@@ -312,8 +312,8 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         zippedWithDegree.filter(t => t._4 == minDegree).take(limit).map(t => (t._1, t._2, t._3))
     }
 
-    def runAndSelect(root: RelNode, orderBy: String = "degree", desc: Boolean = true, limit: Int = 1, fixRootEnable: Boolean): RunResult = {
-        val runResult = run(root, fixRootEnable)
+    def runAndSelect(root: RelNode, orderBy: String = "degree", desc: Boolean = true, limit: Int = 1, fixRootEnable: Boolean, pruneEnable: Boolean): RunResult = {
+        val runResult = run(root, fixRootEnable, pruneEnable)
 
         val selected = orderBy match {
             case "degree" if !desc =>

@@ -33,7 +33,7 @@ public class RestApiController {
     @PostMapping("/parse")
     public Result parseQuery(@RequestBody ParseQueryRequest request,
                              @RequestParam Optional<String> orderBy, @RequestParam Optional<Boolean> desc, @RequestParam Optional<Integer> limit,
-                             @RequestParam Optional<Boolean> fixRootEnable) {
+                             @RequestParam Optional<Boolean> fixRootEnable, @RequestParam Optional<Boolean> pruneEnable) {
         try {
             SqlNodeList nodeList = SqlPlusParser.parseDdl(request.getDdl());
             CatalogManager catalogManager = new CatalogManager();
@@ -46,7 +46,7 @@ public class RestApiController {
 
             VariableManager variableManager = new VariableManager();
             LogicalPlanConverter converter = new LogicalPlanConverter(variableManager, catalogManager);
-            RunResult runResult = converter.runAndSelect(logicalPlan, orderBy.orElse(""), desc.orElse(false), limit.orElse(Integer.MAX_VALUE), fixRootEnable.orElse(false));
+            RunResult runResult = converter.runAndSelect(logicalPlan, orderBy.orElse(""), desc.orElse(false), limit.orElse(Integer.MAX_VALUE), fixRootEnable.orElse(false), pruneEnable.orElse(false));
 
             ParseQueryResponse response = new ParseQueryResponse();
             response.setTables(tables.stream()
