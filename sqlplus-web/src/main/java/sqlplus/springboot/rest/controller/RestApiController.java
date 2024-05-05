@@ -46,7 +46,13 @@ public class RestApiController {
 
             VariableManager variableManager = new VariableManager();
             LogicalPlanConverter converter = new LogicalPlanConverter(variableManager, catalogManager);
-            RunResult runResult = converter.runAndSelect(logicalPlan, orderBy.orElse(""), desc.orElse(false), limit.orElse(Integer.MAX_VALUE), fixRootEnable.orElse(false), pruneEnable.orElse(false));
+
+            RunResult runResult;
+            if (request.getPlan() == null) {
+                runResult = converter.runAndSelect(logicalPlan, orderBy.orElse(""), desc.orElse(false), limit.orElse(Integer.MAX_VALUE), fixRootEnable.orElse(false), pruneEnable.orElse(false));
+            } else {
+                runResult = converter.runWithHint(logicalPlan, request.getPlan());
+            }
 
             ParseQueryResponse response = new ParseQueryResponse();
             response.setTables(tables.stream()

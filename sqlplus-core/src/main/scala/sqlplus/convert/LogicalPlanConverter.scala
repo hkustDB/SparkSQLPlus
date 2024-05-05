@@ -10,6 +10,7 @@ import sqlplus.expression._
 import sqlplus.ghd.GhdAlgorithm
 import sqlplus.graph._
 import sqlplus.gyo.GyoAlgorithm
+import sqlplus.plan.hint.HintNode
 import sqlplus.plan.table.SqlPlusTable
 import sqlplus.types._
 import sqlplus.utils.DisjointSet
@@ -192,7 +193,37 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         }
     }
 
-    def run(root: RelNode, fixRootEnable: Boolean = false, pruneEnable: Boolean = true): RunResult = {
+    def buildFromHint(hint: HintNode, relationalHyperGraph: RelationalHyperGraph, topVariables: Set[Variable]): (List[(JoinTree, RelationalHyperGraph, List[ExtraCondition])], Boolean) = {
+        val relations = relationalHyperGraph.getEdges().map(r => (r.getTableDisplayName(), r)).toMap
+        val edges = mutable.HashSet.empty[JoinTreeEdge]
+        val subset = mutable.HashSet.empty[Relation]
+        val uncovered = mutable.HashSet.empty[Variable]
+        uncovered.addAll(topVariables)
+
+        def visit(node: HintNode, parent: HintNode): Unit = {
+            val relation = relations(node.getRelation)
+            if (parent != null) {
+                edges.add(new JoinTreeEdge(relations(parent.getRelation), relation))
+            }
+
+            if (uncovered.intersect(relation.getNodes()).nonEmpty) {
+                assert(parent == null || subset.contains(relations(parent.getRelation)))
+                subset.add(relation)
+                uncovered.removeAll(relation.getNodes())
+            }
+
+            if (node.getChildren != null) {
+                node.getChildren.foreach(n => visit(n, node))
+            }
+        }
+
+        visit(hint, null)
+        assert(uncovered.isEmpty)
+        val root = relations(hint.getRelation)
+        (List((JoinTree(root, edges.toSet, subset.toSet, false), relationalHyperGraph, List.empty[ExtraCondition])), true)
+    }
+
+    def run(root: RelNode, hint: HintNode = null, fixRootEnable: Boolean = false, pruneEnable: Boolean = true): RunResult = {
         val context = traverseLogicalPlan(root)
         val relations = context.relations
         val conditions = context.conditions
@@ -207,7 +238,9 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
 
         val topVariables = if (aggregations.nonEmpty && groupByVariables.nonEmpty) groupByVariables.toSet else requiredVariables
 
-        val (candidatesFromResults, isFreeConnex) = if (isAcyclic(relationalHyperGraph)) {
+        val (candidatesFromResults, isFreeConnex) = if (hint != null) {
+            buildFromHint(hint, relationalHyperGraph, topVariables)
+        } else if (isAcyclic(relationalHyperGraph)) {
             // for acyclic queries, run GYO Algorithm
             runGyo(relationalHyperGraph, fixRootEnable, pruneEnable, aggregations, groupByVariables.toSet, topVariables)
         } else {
@@ -311,8 +344,12 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         zippedWithDegree.filter(t => t._4 == minDegree).take(limit).map(t => (t._1, t._2, t._3))
     }
 
+    def runWithHint(root: RelNode, hint: HintNode): RunResult = {
+        run(root, hint, false, false)
+    }
+
     def runAndSelect(root: RelNode, orderBy: String = "degree", desc: Boolean = true, limit: Int = 1, fixRootEnable: Boolean, pruneEnable: Boolean): RunResult = {
-        val runResult = run(root, fixRootEnable, pruneEnable)
+        val runResult = run(root, null, fixRootEnable, pruneEnable)
 
         val selected = orderBy match {
             case "degree" if !desc =>

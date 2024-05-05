@@ -1,8 +1,11 @@
 package sqlplus.springboot.rest.request;
 
+import sqlplus.plan.hint.HintNode;
+
 public class ParseQueryRequest {
     String ddl;
     String query;
+    HintNode plan;
 
     public String getDdl() {
         return ddl;
@@ -18,5 +21,13 @@ public class ParseQueryRequest {
 
     public void setQuery(String query) {
         this.query = query;
+    }
+
+    public HintNode getPlan() {
+        return plan;
+    }
+
+    public void setPlan(HintNode plan) {
+        this.plan = plan;
     }
 }
