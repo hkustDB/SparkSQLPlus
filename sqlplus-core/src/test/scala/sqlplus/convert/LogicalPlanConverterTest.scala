@@ -547,7 +547,7 @@ class LogicalPlanConverterTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        val runResult = converter.run(logicalPlan, true)
+        val runResult = converter.run(logicalPlan, hint = null, fixRootEnable = true, pruneEnable = false)
 
         assertTrue(runResult.candidates.forall(c => {
             (c._1.isFixRoot && c._1.root.getTableDisplayName() == "lineitem") ||

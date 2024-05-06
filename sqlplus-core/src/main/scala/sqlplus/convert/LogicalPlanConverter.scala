@@ -195,19 +195,38 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
 
     def buildFromHint(hint: HintNode, relationalHyperGraph: RelationalHyperGraph, topVariables: Set[Variable]): (List[(JoinTree, RelationalHyperGraph, List[ExtraCondition])], Boolean) = {
         val relations = relationalHyperGraph.getEdges().map(r => (r.getTableDisplayName(), r)).toMap
+        val parents = mutable.HashMap.empty[Relation, Relation]
         val edges = mutable.HashSet.empty[JoinTreeEdge]
         val subset = mutable.HashSet.empty[Relation]
         val uncovered = mutable.HashSet.empty[Variable]
         uncovered.addAll(topVariables)
+        val visited = mutable.HashSet.empty[Relation]
+        var isFreeConnex = true
 
         def visit(node: HintNode, parent: HintNode): Unit = {
             val relation = relations(node.getRelation)
+            if (visited.contains(relation)) {
+                throw new RuntimeException(s"${relation.getTableDisplayName()} is duplicated in the given hint plan.")
+            }
+            visited.add(relation)
+
             if (parent != null) {
+                parents(relation) = relations(parent.getRelation)
                 edges.add(new JoinTreeEdge(relations(parent.getRelation), relation))
             }
 
             if (uncovered.intersect(relation.getNodes()).nonEmpty) {
-                assert(parent == null || subset.contains(relations(parent.getRelation)))
+                var p = parents.getOrElse(relation, null)
+                while (p != null) {
+                    if (!subset.contains(p)) {
+                        isFreeConnex = false
+                        subset.add(p)
+                        p = parents(p)
+                    } else {
+                        p = null
+                    }
+                }
+
                 subset.add(relation)
                 uncovered.removeAll(relation.getNodes())
             }
@@ -218,9 +237,16 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         }
 
         visit(hint, null)
-        assert(uncovered.isEmpty)
+        if (uncovered.nonEmpty) {
+            throw new RuntimeException("Some variables are uncovered by the given hint plan.")
+        }
+
+        if (visited.size != relationalHyperGraph.getEdges().size) {
+            throw new RuntimeException("Some hyperedges are uncovered by the given hint plan.")
+        }
+
         val root = relations(hint.getRelation)
-        (List((JoinTree(root, edges.toSet, subset.toSet, false), relationalHyperGraph, List.empty[ExtraCondition])), true)
+        (List((JoinTree(root, edges.toSet, subset.toSet, isFreeConnex), relationalHyperGraph, List.empty[ExtraCondition])), isFreeConnex)
     }
 
     def run(root: RelNode, hint: HintNode = null, fixRootEnable: Boolean = false, pruneEnable: Boolean = true): RunResult = {
