@@ -221,7 +221,7 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
                     if (!subset.contains(p)) {
                         isFreeConnex = false
                         subset.add(p)
-                        p = parents(p)
+                        p = parents.getOrElse(p, null)
                     } else {
                         p = null
                     }
