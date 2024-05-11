@@ -11,8 +11,8 @@ public class TableScanJoinTreeNode extends JoinTreeNode {
     String source;
     List<String> columns;
 
-    public TableScanJoinTreeNode(TableScanRelation relation) {
-        super(relation.getRelationId(), "TableScanRelation", relation.getTableDisplayName());
+    public TableScanJoinTreeNode(TableScanRelation relation, List<String> reserve) {
+        super(relation.getRelationId(), "TableScanRelation", relation.getTableDisplayName(), reserve);
         this.source = relation.getTableName();
         this.columns = JavaConverters.seqAsJavaList(relation.getVariableList()).stream().map(Variable::name).collect(Collectors.toList());
     }

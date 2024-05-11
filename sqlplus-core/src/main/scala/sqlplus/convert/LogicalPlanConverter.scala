@@ -202,13 +202,8 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         uncovered.addAll(topVariables)
         val visited = mutable.HashSet.empty[Relation]
         var isFreeConnex = true
-        var containsCrossJoin = false
 
         def visit(node: HintNode, parent: HintNode): Unit = {
-            if (containsCrossJoin) {
-                return
-            }
-
             val relation = relations(node.getRelation)
             if (visited.contains(relation)) {
                 throw new RuntimeException(s"${relation.getTableDisplayName()} is duplicated in the given hint plan.")
@@ -217,11 +212,6 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
 
             if (parent != null) {
                 parents(relation) = relations(parent.getRelation)
-
-                if (parents(relation).getNodes().intersect(relation.getNodes()).isEmpty) {
-                    containsCrossJoin = true
-                    return
-                }
                 edges.add(new JoinTreeEdge(relations(parent.getRelation), relation))
             }
 
@@ -248,22 +238,16 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
 
         visit(hint, null)
 
-        if (containsCrossJoin) {
-            // cross join is detected, use the root info only
-            val result = gyo.runWithFixRoot(relationalHyperGraph, relations(hint.getRelation), false)
-            (result.candidates.map(t => (t._1, t._2, List.empty)), result.isFreeConnex)
-        } else {
-            if (uncovered.nonEmpty) {
-                throw new RuntimeException("Some variables are uncovered by the given hint plan.")
-            }
-
-            if (visited.size != relationalHyperGraph.getEdges().size) {
-                throw new RuntimeException("Some hyperedges are uncovered by the given hint plan.")
-            }
-
-            val root = relations(hint.getRelation)
-            (List((JoinTree(root, edges.toSet, subset.toSet, isFreeConnex), relationalHyperGraph, List.empty[ExtraCondition])), isFreeConnex)
+        if (uncovered.nonEmpty) {
+            throw new RuntimeException("Some variables are uncovered by the given hint plan.")
         }
+
+        if (visited.size != relationalHyperGraph.getEdges().size) {
+            throw new RuntimeException("Some hyperedges are uncovered by the given hint plan.")
+        }
+
+        val root = relations(hint.getRelation)
+        (List((JoinTree(root, edges.toSet, subset.toSet, isFreeConnex), relationalHyperGraph, List.empty[ExtraCondition])), isFreeConnex)
     }
 
     def run(root: RelNode, hint: HintNode = null, fixRootEnable: Boolean = false, pruneEnable: Boolean = true): RunResult = {

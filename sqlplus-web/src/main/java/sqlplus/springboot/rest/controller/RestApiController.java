@@ -106,15 +106,17 @@ public class RestApiController {
             relations.add(e.getDst());
         });
 
+        Map<Relation, scala.collection.immutable.List<String>> reserves = JavaConverters.mapAsJavaMapConverter(sqlplus.graph.JoinTree.computeReserveVariables(joinTree)).asJava();
+
         List<JoinTreeNode> nodes = relations.stream().map(r -> {
             if (r instanceof TableScanRelation) {
-                return new TableScanJoinTreeNode((TableScanRelation) r);
+                return new TableScanJoinTreeNode((TableScanRelation) r, JavaConverters.seqAsJavaList(reserves.get(r)));
             } else if (r instanceof AuxiliaryRelation) {
-                return new AuxiliaryJoinTreeNode((AuxiliaryRelation) r);
+                return new AuxiliaryJoinTreeNode((AuxiliaryRelation) r, JavaConverters.seqAsJavaList(reserves.get(r)));
             } else if (r instanceof AggregatedRelation) {
-                return new AggregatedJoinTreeNode((AggregatedRelation) r);
+                return new AggregatedJoinTreeNode((AggregatedRelation) r, JavaConverters.seqAsJavaList(reserves.get(r)));
             } else {
-                return new BagJoinTreeNode((BagRelation) r);
+                return new BagJoinTreeNode((BagRelation) r, JavaConverters.seqAsJavaList(reserves.get(r)));
             }
         }).collect(Collectors.toList());
         result.setNodes(nodes);
