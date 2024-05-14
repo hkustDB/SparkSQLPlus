@@ -15,6 +15,7 @@ import sqlplus.expression.VariableManager;
 import sqlplus.graph.*;
 import sqlplus.parser.SqlPlusParser;
 import sqlplus.plan.SqlPlusPlanner;
+import sqlplus.plan.hint.HintNode;
 import sqlplus.plan.table.SqlPlusTable;
 import sqlplus.springboot.dto.Result;
 import sqlplus.springboot.rest.object.Comparison;
@@ -60,7 +61,7 @@ public class RestApiController {
                     .collect(Collectors.toList()));
 
             List<JoinTree> joinTrees = JavaConverters.seqAsJavaList(runResult.candidates()).stream()
-                    .map(t -> buildJoinTree(t._1(), t._2(), t._3()))
+                    .map(t -> buildJoinTree(t._1(), t._2(), t._3(), request.getPlan()))
                     .collect(Collectors.toList());
             response.setJoinTrees(joinTrees);
 
@@ -96,7 +97,32 @@ public class RestApiController {
         }
     }
 
-    private JoinTree buildJoinTree(sqlplus.graph.JoinTree joinTree, ComparisonHyperGraph comparisonHyperGraph, scala.collection.immutable.List<ExtraCondition> extra) {
+    private void visitHintNode(HintNode node, Map<String, Integer> relationAliasToId, Map<Integer, List<Integer>> hintJoinOrders) {
+        if (!node.getChildren().isEmpty()) {
+            List<Integer> order = node.getChildren().stream().map(c -> relationAliasToId.get(c.getRelation())).collect(Collectors.toList());
+            hintJoinOrders.put(relationAliasToId.get(node.getRelation()), order);
+
+            node.getChildren().forEach(c -> visitHintNode(c, relationAliasToId, hintJoinOrders));
+        } else {
+            hintJoinOrders.put(relationAliasToId.get(node.getRelation()), new ArrayList<>());
+        }
+    }
+
+    private Map<Integer, List<Integer>> extractHintJoinOrders(HintNode root, sqlplus.graph.JoinTree joinTree) {
+        Set<sqlplus.graph.JoinTreeEdge> joinTreeEdges = JavaConverters.setAsJavaSet(joinTree.edges());
+        Map<String, Integer> relationAliasToId = new HashMap<>();
+        relationAliasToId.put(joinTree.getRoot().getTableDisplayName(), joinTree.getRoot().getRelationId());
+        joinTreeEdges.forEach(e -> {
+            relationAliasToId.put(e.getSrc().getTableDisplayName(), e.getSrc().getRelationId());
+            relationAliasToId.put(e.getDst().getTableDisplayName(), e.getDst().getRelationId());
+        });
+
+        Map<Integer, List<Integer>> hintJoinOrders = new HashMap<>();
+        visitHintNode(root, relationAliasToId, hintJoinOrders);
+        return hintJoinOrders;
+    }
+
+    private JoinTree buildJoinTree(sqlplus.graph.JoinTree joinTree, ComparisonHyperGraph comparisonHyperGraph, scala.collection.immutable.List<ExtraCondition> extra, HintNode hintNode) {
         JoinTree result = new JoinTree();
         Set<sqlplus.graph.JoinTreeEdge> joinTreeEdges = JavaConverters.setAsJavaSet(joinTree.edges());
         Set<Relation> relations = new HashSet<>();
@@ -108,17 +134,30 @@ public class RestApiController {
 
         Map<Relation, scala.collection.immutable.List<String>> reserves = JavaConverters.mapAsJavaMapConverter(sqlplus.graph.JoinTree.computeReserveVariables(joinTree)).asJava();
 
-        List<JoinTreeNode> nodes = relations.stream().map(r -> {
-            if (r instanceof TableScanRelation) {
-                return new TableScanJoinTreeNode((TableScanRelation) r, JavaConverters.seqAsJavaList(reserves.get(r)));
-            } else if (r instanceof AuxiliaryRelation) {
-                return new AuxiliaryJoinTreeNode((AuxiliaryRelation) r, JavaConverters.seqAsJavaList(reserves.get(r)));
-            } else if (r instanceof AggregatedRelation) {
-                return new AggregatedJoinTreeNode((AggregatedRelation) r, JavaConverters.seqAsJavaList(reserves.get(r)));
-            } else {
-                return new BagJoinTreeNode((BagRelation) r, JavaConverters.seqAsJavaList(reserves.get(r)));
+        Map<Integer, List<Integer>> hintJoinOrders = null;
+        if (hintNode != null) {
+            hintJoinOrders = extractHintJoinOrders(hintNode, joinTree);
+        }
+
+        List<JoinTreeNode> nodes = new ArrayList<>();
+        Iterator<Relation> iter = relations.iterator();
+        while (iter.hasNext()) {
+            Relation r = iter.next();
+            List<Integer> order = new ArrayList<>();
+            if (hintJoinOrders != null) {
+                order = hintJoinOrders.get(r.getRelationId());
             }
-        }).collect(Collectors.toList());
+
+            if (r instanceof TableScanRelation) {
+                nodes.add(new TableScanJoinTreeNode((TableScanRelation) r, JavaConverters.seqAsJavaList(reserves.get(r)), order));
+            } else if (r instanceof AuxiliaryRelation) {
+                nodes.add(new AuxiliaryJoinTreeNode((AuxiliaryRelation) r, JavaConverters.seqAsJavaList(reserves.get(r)), order));
+            } else if (r instanceof AggregatedRelation) {
+                nodes.add(new AggregatedJoinTreeNode((AggregatedRelation) r, JavaConverters.seqAsJavaList(reserves.get(r)), order));
+            } else {
+                nodes.add(new BagJoinTreeNode((BagRelation) r, JavaConverters.seqAsJavaList(reserves.get(r)), order));
+            }
+        }
         result.setNodes(nodes);
 
         List<JoinTreeEdge> edges = joinTreeEdges.stream()

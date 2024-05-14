@@ -13,8 +13,8 @@ public class AggregatedJoinTreeNode extends JoinTreeNode {
     List<Integer> group;
     String func;
 
-    public AggregatedJoinTreeNode(AggregatedRelation relation, List<String> reserve) {
-        super(relation.getRelationId(), "AggregatedRelation", relation.getTableDisplayName(), reserve);
+    public AggregatedJoinTreeNode(AggregatedRelation relation, List<String> reserve, List<Integer> hintJoinOrder) {
+        super(relation.getRelationId(), "AggregatedRelation", relation.getTableDisplayName(), reserve, hintJoinOrder);
         this.source = relation.getTableName();
         this.columns = JavaConverters.seqAsJavaList(relation.getVariableList()).stream().map(Variable::name).collect(Collectors.toList());
         this.group = JavaConverters.seqAsJavaList(relation.group()).stream().map(i -> (Integer)i).collect(Collectors.toList());

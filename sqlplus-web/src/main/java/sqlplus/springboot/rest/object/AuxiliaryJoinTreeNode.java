@@ -11,8 +11,8 @@ public class AuxiliaryJoinTreeNode extends JoinTreeNode {
     int support;
     List<String> columns;
 
-    public AuxiliaryJoinTreeNode(AuxiliaryRelation relation, List<String> reserve) {
-        super(relation.getRelationId(), "AuxiliaryRelation", relation.getTableDisplayName(), reserve);
+    public AuxiliaryJoinTreeNode(AuxiliaryRelation relation, List<String> reserve, List<Integer> hintJoinOrder) {
+        super(relation.getRelationId(), "AuxiliaryRelation", relation.getTableDisplayName(), reserve, hintJoinOrder);
         this.support = relation.supportingRelation().getRelationId();
         this.columns = JavaConverters.seqAsJavaList(relation.getVariableList()).stream().map(Variable::name).collect(Collectors.toList());
     }

@@ -7,15 +7,17 @@ public class JoinTreeNode {
     String type;
     String alias;
     List<String> reserves;
+    List<Integer> hintJoinOrder;
 
     public JoinTreeNode() {
     }
 
-    public JoinTreeNode(int id, String type, String alias, List<String> reserves) {
+    public JoinTreeNode(int id, String type, String alias, List<String> reserves, List<Integer> hintJoinOrder) {
         this.id = id;
         this.type = type;
         this.alias = alias;
         this.reserves = reserves;
+        this.hintJoinOrder = hintJoinOrder;
     }
 
     public int getId() {
@@ -48,5 +50,13 @@ public class JoinTreeNode {
 
     public void setReserves(List<String> reserves) {
         this.reserves = reserves;
+    }
+
+    public List<Integer> getHintJoinOrder() {
+        return hintJoinOrder;
+    }
+
+    public void setHintJoinOrder(List<Integer> hintJoinOrder) {
+        this.hintJoinOrder = hintJoinOrder;
     }
 }
