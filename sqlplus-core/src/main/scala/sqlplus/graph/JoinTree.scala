@@ -73,18 +73,23 @@ object JoinTree {
         }
         g(joinTree.root, null)
 
-        def h(relation: Relation, parent: Relation): Unit = {
-            if (parent == null) {
-                reserve(relation) = Set.empty
-            } else {
-                reserve(relation) = mergedFromBottom(relation).intersect(mergedFromTop(parent))
+        def h(relation: Relation): Unit = {
+            if (children.contains(relation)) {
+                children(relation).foreach(c => h(c))
             }
 
             if (children.contains(relation)) {
-                children(relation).foreach(c => h(c, relation))
+                children(relation).foreach(c => {
+                    val tmp = mutable.HashSet.empty[Variable]
+                    children(relation).filter(r => r != c).foreach(r => mergedFromBottom(r).foreach(v => tmp.add(v)))
+                    mergedFromTop(relation).foreach(v => tmp.add(v))
+
+                    reserve(c) = mergedFromBottom(c).intersect(tmp)
+                })
             }
         }
-        h(joinTree.root, null)
+        h(joinTree.root)
+        reserve(joinTree.root) = Set.empty
 
         reserve.map(t => (t._1, t._2.toList.map(v => v.name))).toMap
     }
