@@ -48,48 +48,34 @@ object JoinTree {
         val children = joinTree.getEdges().groupBy(e => e.getSrc).map(t => (t._1, t._2.map(e => e.getDst)))
 
         def f(relation: Relation, parent: Relation): Unit = {
-            if (parent == null) {
-                mergedFromTop(relation) = relation.getNodes()
-            } else {
-                mergedFromTop(relation) = relation.getNodes().union(mergedFromTop(parent))
-            }
-
-            if (children.contains(relation)) {
-                children(relation).foreach(c => f(c, relation))
-            }
-        }
-        f(joinTree.root, null)
-
-        def g(relation: Relation, parent: Relation): Unit = {
             mergedFromBottom(relation) = relation.getNodes()
 
             if (children.contains(relation)) {
-                children(relation).foreach(c => g(c, relation))
+                children(relation).foreach(c => f(c, relation))
             }
 
             if (parent != null) {
                 mergedFromBottom(parent) = mergedFromBottom(parent).union(mergedFromBottom(relation))
             }
         }
-        g(joinTree.root, null)
+        f(joinTree.root, null)
 
-        def h(relation: Relation): Unit = {
-            if (children.contains(relation)) {
-                children(relation).foreach(c => h(c))
-            }
+        def g(relation: Relation): Unit = {
+            reserve(relation) = mergedFromBottom(relation).intersect(mergedFromTop(relation))
 
             if (children.contains(relation)) {
                 children(relation).foreach(c => {
                     val tmp = mutable.HashSet.empty[Variable]
                     children(relation).filter(r => r != c).foreach(r => mergedFromBottom(r).foreach(v => tmp.add(v)))
                     mergedFromTop(relation).foreach(v => tmp.add(v))
-
-                    reserve(c) = mergedFromBottom(c).intersect(tmp)
+                    relation.getNodes().foreach(v => tmp.add(v))
+                    mergedFromTop(c) = tmp.toSet
+                    g(c)
                 })
             }
         }
-        h(joinTree.root)
-        reserve(joinTree.root) = Set.empty
+        mergedFromTop(joinTree.root) = Set.empty
+        g(joinTree.root)
 
         reserve.map(t => (t._1, t._2.toList.map(v => v.name))).toMap
     }
