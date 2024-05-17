@@ -172,23 +172,32 @@ class GhdAlgorithm {
             (auxiliary, convertResult)
         }).toMap
 
-        val outputAndAuxiliaryRelations = outputRelations ++ auxiliaryRelationToConvertedComponent.keySet
-        val roots = decompose(outputAndAuxiliaryRelations, Set.empty).flatMap(b => b.transform())
-        GhdScoreAssigner.clear()
-        val minScore = roots.toList.map(n => n.score).min
-        val pickedRoots = roots.toList.filter(n => Math.abs(n.score._1 - minScore._1) < 0.01 && n.score._2 == minScore._2)
-        val convertResults = pickedRoots.map(pickedRoot => convertGhdNodeAndRemoveRedundancy(pickedRoot, auxiliaryRelationToConvertedComponent))
+        if (outputVariables.nonEmpty) {
+            val outputAndAuxiliaryRelations = outputRelations ++ auxiliaryRelationToConvertedComponent.keySet
+            val roots = decompose(outputAndAuxiliaryRelations, Set.empty).flatMap(b => b.transform())
+            GhdScoreAssigner.clear()
+            val minScore = roots.toList.map(n => n.score).min
+            val pickedRoots = roots.toList.filter(n => Math.abs(n.score._1 - minScore._1) < 0.01 && n.score._2 == minScore._2)
+            val convertResults = pickedRoots.map(pickedRoot => convertGhdNodeAndRemoveRedundancy(pickedRoot, auxiliaryRelationToConvertedComponent))
 
-        val result = convertResults.map(convertResult => {
-            val combined = auxiliaryRelationToConvertedComponent.values.foldLeft((convertResult._1, convertResult._2))((z, t) => {
-                (z._1 ++ t._1, z._2 ++ t._2)
+            val result = convertResults.map(convertResult => {
+                val combined = auxiliaryRelationToConvertedComponent.values.foldLeft((convertResult._1, convertResult._2))((z, t) => {
+                    (z._1 ++ t._1, z._2 ++ t._2)
+                })
+                val joinTree = JoinTree(convertResult._3, combined._1, convertResult._2, false)
+                val hypergraph = combined._2.foldLeft(RelationalHyperGraph.EMPTY)((z, e) => z.addHyperEdge(e))
+                (joinTree, hypergraph)
             })
-            val joinTree = JoinTree(convertResult._3, combined._1, convertResult._2, false)
-            val hypergraph = combined._2.foldLeft(RelationalHyperGraph.EMPTY)((z, e) => z.addHyperEdge(e))
-            (joinTree, hypergraph)
-        })
 
-        GhdResult(result)
+            GhdResult(result)
+        } else {
+            assert(auxiliaryRelationToConvertedComponent.size == 1)
+            assert(auxiliaryRelationToConvertedComponent.head._1.getNodes().isEmpty)
+            val convertResult = auxiliaryRelationToConvertedComponent.head._2
+            val joinTree = JoinTree(convertResult._3, convertResult._1, convertResult._2, false)
+            val hypergraph = convertResult._2.foldLeft(RelationalHyperGraph.EMPTY)((z, e) => z.addHyperEdge(e))
+            GhdResult(List((joinTree, hypergraph)))
+        }
     }
 
     def findComponents(relations: Set[Relation], reachable: Map[Variable, Set[Relation]], result: List[Set[Relation]] = List.empty): List[Set[Relation]] = {
