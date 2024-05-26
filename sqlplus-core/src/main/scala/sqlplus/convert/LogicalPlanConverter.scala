@@ -228,7 +228,7 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
                 }
 
                 subset.add(relation)
-                uncovered.removeAll(relation.getNodes())
+                relation.getNodes().foreach(v => uncovered.remove(v))
             }
 
             if (node.getChildren != null) {
