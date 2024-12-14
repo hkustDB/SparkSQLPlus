@@ -3,6 +3,7 @@ package sqlplus.springboot.rest.controller;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.bind.annotation.*;
 import scala.collection.JavaConverters;
 import sqlplus.catalog.CatalogManager;
@@ -25,16 +26,24 @@ import sqlplus.springboot.rest.object.*;
 import sqlplus.springboot.rest.request.ParseQueryRequest;
 import sqlplus.springboot.rest.response.ParseQueryResponse;
 
+import javax.annotation.Resource;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1")
 public class RestApiController {
+    @Resource(name="threadPoolTaskExecutor")
+    ThreadPoolTaskExecutor executor;
+
     @PostMapping("/parse")
     public Result parseQuery(@RequestBody ParseQueryRequest request,
                              @RequestParam Optional<String> orderBy, @RequestParam Optional<Boolean> desc, @RequestParam Optional<Integer> limit,
-                             @RequestParam Optional<Boolean> fixRootEnable, @RequestParam Optional<Boolean> pruneEnable) {
+                             @RequestParam Optional<Boolean> fixRootEnable, @RequestParam Optional<Boolean> pruneEnable, @RequestParam Optional<Integer> timeout) {
         try {
             SqlNodeList nodeList = SqlPlusParser.parseDdl(request.getDdl());
             CatalogManager catalogManager = new CatalogManager();
@@ -52,7 +61,17 @@ public class RestApiController {
             if (request.getPlan() == null) {
                 runResult = converter.runAndSelect(logicalPlan, orderBy.orElse(""), desc.orElse(false), limit.orElse(Integer.MAX_VALUE), fixRootEnable.orElse(false), pruneEnable.orElse(false));
             } else {
-                runResult = converter.runWithHint(logicalPlan, request.getPlan());
+                Future<RunResult> runResultFuture = executor.submit(() -> converter.runAndSelect(logicalPlan,
+                    orderBy.orElse(""), desc.orElse(false), limit.orElse(Integer.MAX_VALUE),
+                    fixRootEnable.orElse(false), pruneEnable.orElse(false)));
+
+                int maxTimeout = timeout.orElse(Integer.MAX_VALUE);
+
+                try {
+                    runResult = runResultFuture.get(maxTimeout, TimeUnit.MILLISECONDS);
+                } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                    runResult = converter.runWithHint(logicalPlan, request.getPlan());
+                }
             }
 
             ParseQueryResponse response = new ParseQueryResponse();

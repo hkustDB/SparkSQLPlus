@@ -9,7 +9,7 @@ import java.util
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
-object GhdScoreAssigner {
+class GhdScoreAssigner {
     private val dict = mutable.HashMap.empty[Set[Relation], Double]
 
     def clear(): Unit =

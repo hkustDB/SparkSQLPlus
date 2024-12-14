@@ -14,10 +14,10 @@ class Bag(val relations: Set[Relation], val childrenCandidates: Set[Set[Bag]]) {
         def x(ys: Set[Bag]): Set[Array[Bag]] = for {xs <- xss; y <- ys} yield xs :+ y
     }
 
-    def transform(): Set[GhdNode] = {
+    def transform(assigner: GhdScoreAssigner): Set[GhdNode] = {
         val childrenNodes = childrenCandidates
                 .foldLeft(Set(Array.empty[Bag]))((z, bag) => z x bag)
-                .map(arr => arr.flatMap(bag => bag.transform()).toSet)
-        childrenNodes.map(c => new GhdNode(relations, c))
+                .map(arr => arr.flatMap(bag => bag.transform(assigner)).toSet)
+        childrenNodes.map(c => new GhdNode(relations, c, assigner))
     }
 }

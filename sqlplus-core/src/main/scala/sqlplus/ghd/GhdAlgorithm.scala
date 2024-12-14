@@ -140,6 +140,7 @@ class GhdAlgorithm {
     }
 
     def run(hyperGraph: RelationalHyperGraph, outputVariables: Set[Variable]): GhdResult = {
+        val assigner = new GhdScoreAssigner;
         val hyperEdges = hyperGraph.getEdges()
 
         // for outputVariables, the reachable is empty set
@@ -159,8 +160,8 @@ class GhdAlgorithm {
             componentDecompositionAndOutputVariables.map(t => {
             val decompositions = t._1
             val componentOutputVariables = t._2
-            val roots = decompositions.flatMap(b => b.transform())
-            GhdScoreAssigner.clear()
+            val roots = decompositions.flatMap(b => b.transform(assigner))
+            assigner.clear()
             val pickedRoot = roots.toList.minBy(n => n.score)
             val convertResult = convertGhdNode(pickedRoot)
             // the root relation of the component should have all output variables
@@ -174,8 +175,8 @@ class GhdAlgorithm {
 
         if (outputVariables.nonEmpty) {
             val outputAndAuxiliaryRelations = outputRelations ++ auxiliaryRelationToConvertedComponent.keySet
-            val roots = decompose(outputAndAuxiliaryRelations, Set.empty).flatMap(b => b.transform())
-            GhdScoreAssigner.clear()
+            val roots = decompose(outputAndAuxiliaryRelations, Set.empty).flatMap(b => b.transform(assigner))
+            assigner.clear()
             val minScore = roots.toList.map(n => n.score).min
             val pickedRoots = roots.toList.filter(n => Math.abs(n.score._1 - minScore._1) < 0.01 && n.score._2 == minScore._2)
             val convertResults = pickedRoots.map(pickedRoot => convertGhdNodeAndRemoveRedundancy(pickedRoot, auxiliaryRelationToConvertedComponent))
