@@ -79,6 +79,13 @@ object Operator {
         }
     }
 
+    def getOperator(op: String): Operator = {
+        op match {
+            case "IS NULL" => IsNull
+            case "IS NOT NULL" => IsNotNull
+        }
+    }
+
     private def selectNumericLessThanImplementation(leftType: DataType, rightType: DataType): NumericLessThan[_] = {
         DataTypeCasting.promote(leftType, rightType) match {
             case DoubleDataType => DoubleLessThan
@@ -293,6 +300,30 @@ case class DoubleInLiterals(literals: List[Double], isNeg: Boolean) extends InLi
         val op = if (isNeg) "NOT IN" else "IN"
         s"(${expressions(0)} ${op} ${set})"
     }
+}
+
+case object IsNull extends UnaryOperator {
+    override def getFuncName(): String = "IsNull"
+
+    override def getFuncDefinition(): List[String] = throw new UnsupportedOperationException()
+
+    override def getFuncLiteral(isReverse: Boolean): String = throw new UnsupportedOperationException()
+
+    override def isNegated(): Boolean = throw new UnsupportedOperationException()
+
+    override def format(expressions: List[Expression]): String = s"(${expressions(0)} IS NULL)"
+}
+
+case object IsNotNull extends UnaryOperator {
+    override def getFuncName(): String = "IsNotNull"
+
+    override def getFuncDefinition(): List[String] = throw new UnsupportedOperationException()
+
+    override def getFuncLiteral(isReverse: Boolean): String = throw new UnsupportedOperationException()
+
+    override def isNegated(): Boolean = throw new UnsupportedOperationException()
+
+    override def format(expressions: List[Expression]): String = s"(${expressions(0)} IS NOT NULL)"
 }
 
 object UnaryOperatorSuffix {

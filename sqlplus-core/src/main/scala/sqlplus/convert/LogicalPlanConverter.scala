@@ -348,6 +348,14 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
                     } else {
                         extraEqualConditions.append(ExtraOrCondition(conditions))
                     }
+                case IsNullCondition(operand) =>
+                    val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, operand, operand).toSet
+                    val op = Operator.getOperator("IS NULL")
+                    comparisonHyperEdges.append(Comparison(path, op, operand, operand))
+                case IsNotNullCondition(operand) =>
+                    val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, operand, operand).toSet
+                    val op = Operator.getOperator("IS NOT NULL")
+                    comparisonHyperEdges.append(Comparison(path, op, operand, operand))
                 case ex: ExtraCondition =>
                     extraEqualConditions.append(ex)
             }
@@ -572,6 +580,12 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
                     LikeCondition(operand, s, isNeg)
                 case "OR" =>
                     convertOrRexCallToCondition(rexCall, variableList, isNeg)
+                case "IS NULL" =>
+                    assert(!isNeg)
+                    IsNullCondition(convertRexNodeToExpression(rexCall.getOperands.get(0), variableList))
+                case "IS NOT NULL" =>
+                    assert(!isNeg)
+                    IsNotNullCondition(convertRexNodeToExpression(rexCall.getOperands.get(0), variableList))
             }
         })
 
@@ -637,6 +651,10 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
             case "<>" =>
                 assert((rexCall.getOperands.get(1).isInstanceOf[RexLiteral] && !rexCall.getOperands.get(0).isInstanceOf[RexLiteral])
                     || (rexCall.getOperands.get(0).isInstanceOf[RexLiteral] && !rexCall.getOperands.get(1).isInstanceOf[RexLiteral]))
+                result.append((rexCall, isNeg))
+            case "IS NULL" =>
+                result.append((rexCall, isNeg))
+            case "IS NOT NULL" =>
                 result.append((rexCall, isNeg))
             case _ =>
                 throw new UnsupportedOperationException(s"unsupported operator ${rexCall.getOperator.getName}")

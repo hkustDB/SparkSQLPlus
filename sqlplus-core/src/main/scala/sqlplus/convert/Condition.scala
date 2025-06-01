@@ -51,6 +51,14 @@ case class AndCondition(conditions: List[Condition], involved: Set[Expression]) 
     override def toString: String = conditions.map(c => c.toString).mkString("(", " AND ", ")")
 }
 
+case class IsNullCondition(operand: Expression) extends Condition {
+    override def toString: String = s"${operand} IS NULL"
+}
+
+case class IsNotNullCondition(operand: Expression) extends Condition {
+    override def toString: String = s"${operand} IS NOT NULL"
+}
+
 sealed trait ExtraCondition extends Condition
 case class ExtraOrCondition(conditions: List[Condition]) extends ExtraCondition {
     override def toString: String = conditions.map(c => c.toString).mkString("(", " OR ", ")")
