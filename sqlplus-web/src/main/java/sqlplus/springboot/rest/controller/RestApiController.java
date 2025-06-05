@@ -131,9 +131,19 @@ public class RestApiController {
         Set<sqlplus.graph.JoinTreeEdge> joinTreeEdges = JavaConverters.setAsJavaSet(joinTree.edges());
         Map<String, Integer> relationAliasToId = new HashMap<>();
         relationAliasToId.put(joinTree.getRoot().getTableDisplayName(), joinTree.getRoot().getRelationId());
+        if (!joinTree.getRoot().getTableDisplayName().equals(joinTree.getRoot().getTableName())) {
+            relationAliasToId.put(joinTree.getRoot().getTableName(), joinTree.getRoot().getRelationId());
+        }
         joinTreeEdges.forEach(e -> {
             relationAliasToId.put(e.getSrc().getTableDisplayName(), e.getSrc().getRelationId());
+            if (!e.getSrc().getTableDisplayName().equals(e.getSrc().getTableName())) {
+                relationAliasToId.put(e.getSrc().getTableName(), e.getSrc().getRelationId());
+            }
+
             relationAliasToId.put(e.getDst().getTableDisplayName(), e.getDst().getRelationId());
+            if (!e.getDst().getTableDisplayName().equals(e.getDst().getTableName())) {
+                relationAliasToId.put(e.getDst().getTableName(), e.getDst().getRelationId());
+            }
         });
 
         Map<Integer, List<Integer>> hintJoinOrders = new HashMap<>();
