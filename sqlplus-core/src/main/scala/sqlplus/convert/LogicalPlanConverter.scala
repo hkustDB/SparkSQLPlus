@@ -194,7 +194,13 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
     }
 
     def buildFromHint(hint: HintNode, relationalHyperGraph: RelationalHyperGraph, topVariables: Set[Variable]): (List[(JoinTree, RelationalHyperGraph, List[ExtraCondition])], Boolean) = {
-        val relations = relationalHyperGraph.getEdges().map(r => (r.getTableDisplayName(), r)).toMap
+        val relations = relationalHyperGraph.getEdges().flatMap(r => {
+            if (r.getTableDisplayName() == r.getTableName()) {
+                Set((r.getTableDisplayName(), r))
+            } else {
+                Set((r.getTableDisplayName(), r), (r.getTableName(), r))
+            }
+        }).toMap
         val parents = mutable.HashMap.empty[Relation, Relation]
         val edges = mutable.HashSet.empty[JoinTreeEdge]
         val subset = mutable.HashSet.empty[Relation]
