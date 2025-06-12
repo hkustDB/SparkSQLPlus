@@ -167,28 +167,22 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         candidateRelations.filter(r => chaseVariables(r).containsAll(groupByVariables)).toList
     }
 
-    def runGyo(relationalHyperGraph: RelationalHyperGraph, fixRootEnable: Boolean, pruneEnable: Boolean,
+    def runGyo(relationalHyperGraph: RelationalHyperGraph,
                aggregations: List[(Variable, String, List[Expression])],
                groupByVariables: Set[Variable], topVariables: Set[Variable]): (List[(JoinTree, RelationalHyperGraph, List[ExtraCondition])], Boolean) = {
         // first run GYO without fixRoot
-        val gyoResult = gyo.run(relationalHyperGraph, topVariables, pruneEnable)
+        val gyoResult = gyo.run(relationalHyperGraph, topVariables)
         val withoutFixRoot = (gyoResult.candidates.map(t => (t._1, t._2, List.empty)), gyoResult.isFreeConnex)
 
-        // if fixRoot is set, try to fix the root as the largest relation
-        if (fixRootEnable) {
-            val optFixRoot = tryFixRoot(relationalHyperGraph, aggregations.nonEmpty, groupByVariables)
-            if (optFixRoot.nonEmpty) {
-                optFixRoot.foldLeft(withoutFixRoot)((z, r) => {
-                    val gyoResult = gyo.runWithFixRoot(relationalHyperGraph, r, pruneEnable)
-                    val withFixRoot = (gyoResult.candidates.map(t => (t._1, t._2, List.empty)), gyoResult.isFreeConnex)
-                    (z._1 ++ withFixRoot._1, z._2)
-                })
-            } else {
-                // unable to fix root
-                withoutFixRoot
-            }
+        val optFixRoot = tryFixRoot(relationalHyperGraph, aggregations.nonEmpty, groupByVariables)
+        if (optFixRoot.nonEmpty) {
+            optFixRoot.foldLeft(withoutFixRoot)((z, r) => {
+                val gyoResult = gyo.runWithFixRoot(relationalHyperGraph, r)
+                val withFixRoot = (gyoResult.candidates.map(t => (t._1, t._2, List.empty)), gyoResult.isFreeConnex)
+                (z._1 ++ withFixRoot._1, z._2)
+            })
         } else {
-            // fix root disabled
+            // unable to fix root
             withoutFixRoot
         }
     }
@@ -256,7 +250,7 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         (List((JoinTree(root, edges.toSet, subset.toSet, isFreeConnex), relationalHyperGraph, List.empty[ExtraCondition])), isFreeConnex)
     }
 
-    def run(root: RelNode, hint: HintNode = null, fixRootEnable: Boolean = false, pruneEnable: Boolean = true): RunResult = {
+    def run(root: RelNode, hint: HintNode = null): ConvertResult = {
         val context = traverseLogicalPlan(root)
         val relations = context.relations
         val conditions = context.conditions
@@ -275,7 +269,7 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
             buildFromHint(hint, relationalHyperGraph, topVariables)
         } else if (isAcyclic(relationalHyperGraph)) {
             // for acyclic queries, run GYO Algorithm
-            runGyo(relationalHyperGraph, fixRootEnable, pruneEnable, aggregations, groupByVariables.toSet, topVariables)
+            runGyo(relationalHyperGraph, aggregations, groupByVariables.toSet, topVariables)
         } else {
             // try to break cyclic queries
             val optBreakResult = break(relationalHyperGraph)
@@ -285,7 +279,7 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
                 val runGyoResult = hyperGraphAndExtraConditions.map(t => {
                     val hyperGraph = t._1
                     val extraConditions = t._2
-                    val (candidates, isFreeConnex) =  runGyo(hyperGraph, fixRootEnable, pruneEnable, aggregations, groupByVariables.toSet, topVariables)
+                    val (candidates, isFreeConnex) =  runGyo(hyperGraph, aggregations, groupByVariables.toSet, topVariables)
                     val candidatesWithExtraConditions = candidates.map(t => (t._1, t._2, t._3 ++ extraConditions))
                     (candidatesWithExtraConditions, isFreeConnex)
                 })
@@ -376,7 +370,7 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
                 List.empty
         })
 
-        RunResult(candidates, outputVariables, computations, isFull, isFreeConnex, groupByVariables, aggregations, optTopK)
+        ConvertResult(candidates, outputVariables, computations, isFull, isFreeConnex, groupByVariables, aggregations, optTopK)
     }
 
     def candidatesWithLimit(list: List[(JoinTree, ComparisonHyperGraph, List[ExtraCondition])], limit: Int): List[(JoinTree, ComparisonHyperGraph, List[ExtraCondition])] = {
@@ -385,34 +379,8 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         zippedWithDegree.filter(t => t._4 == minDegree).take(limit).map(t => (t._1, t._2, t._3))
     }
 
-    def runWithHint(root: RelNode, hint: HintNode): RunResult = {
-        run(root, hint, false, false)
-    }
-
-    def runAndSelect(root: RelNode, orderBy: String = "degree", desc: Boolean = true, limit: Int = 1, fixRootEnable: Boolean, pruneEnable: Boolean): RunResult = {
-        val runResult = run(root, null, fixRootEnable, pruneEnable)
-
-        val selected = orderBy match {
-            case "degree" if !desc =>
-                // select the joinTree and ComparisonHyperGraph with minimum degree
-                runResult.candidates.sortBy(t => t._2.getDegree()).take(limit)
-            case "fanout" if !desc =>
-                // select the joinTree and ComparisonHyperGraph with minimum maxFanout
-                runResult.candidates.sortBy(t => t._1.getMaxFanout()).take(limit)
-            case "pk2fk" if !desc =>
-                runResult.candidates.sortBy(t => t._1.pk2fkCount).take(limit)
-            case "pk2fk" if desc =>
-                runResult.candidates.sortBy(t => t._1.pk2fkCount).reverse.take(limit)
-            case "fk2pk" if !desc =>
-                runResult.candidates.sortBy(t => t._1.fk2pkCount).take(limit)
-            case "fk2pk" if desc =>
-                runResult.candidates.sortBy(t => t._1.fk2pkCount).reverse.take(limit)
-            case "" =>
-                runResult.candidates.take(limit)
-        }
-
-        RunResult(selected, runResult.outputVariables, runResult.computations, runResult.isFull, runResult.isFreeConnex,
-            runResult.groupByVariables, runResult.aggregations, runResult.optTopK)
+    def runWithHint(root: RelNode, hint: HintNode): ConvertResult = {
+        run(root, hint)
     }
 
     def traverseLogicalPlan(node: RelNode): Context = {

@@ -7,9 +7,9 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.bind.annotation.*;
 import scala.collection.JavaConverters;
 import sqlplus.catalog.CatalogManager;
+import sqlplus.convert.ConvertResult;
 import sqlplus.convert.ExtraCondition;
 import sqlplus.convert.LogicalPlanConverter;
-import sqlplus.convert.RunResult;
 import sqlplus.expression.Expression;
 import sqlplus.expression.Variable;
 import sqlplus.expression.VariableManager;
@@ -41,9 +41,7 @@ public class RestApiController {
     ThreadPoolTaskExecutor executor;
 
     @PostMapping("/parse")
-    public Result parseQuery(@RequestBody ParseQueryRequest request,
-                             @RequestParam Optional<String> orderBy, @RequestParam Optional<Boolean> desc, @RequestParam Optional<Integer> limit,
-                             @RequestParam Optional<Boolean> fixRootEnable, @RequestParam Optional<Boolean> pruneEnable, @RequestParam Optional<Integer> timeout) {
+    public Result parseQuery(@RequestBody ParseQueryRequest request, @RequestParam Optional<Integer> timeout) {
         try {
             SqlNodeList nodeList = SqlPlusParser.parseDdl(request.getDdl());
             CatalogManager catalogManager = new CatalogManager();
@@ -57,13 +55,11 @@ public class RestApiController {
             VariableManager variableManager = new VariableManager();
             LogicalPlanConverter converter = new LogicalPlanConverter(variableManager, catalogManager);
 
-            RunResult runResult;
+            ConvertResult runResult;
             if (request.getPlan() == null) {
-                runResult = converter.runAndSelect(logicalPlan, orderBy.orElse(""), desc.orElse(false), limit.orElse(Integer.MAX_VALUE), fixRootEnable.orElse(false), pruneEnable.orElse(false));
+                runResult = converter.run(logicalPlan, null);
             } else {
-                Future<RunResult> runResultFuture = executor.submit(() -> converter.runAndSelect(logicalPlan,
-                    orderBy.orElse(""), desc.orElse(false), limit.orElse(Integer.MAX_VALUE),
-                    fixRootEnable.orElse(false), pruneEnable.orElse(false)));
+                Future<ConvertResult> runResultFuture = executor.submit(() -> converter.run(logicalPlan, null));
 
                 int maxTimeout = timeout.orElse(Integer.MAX_VALUE);
 
@@ -198,8 +194,6 @@ public class RestApiController {
 
         List<Integer> subset = JavaConverters.setAsJavaSet(joinTree.getSubset()).stream().map(Relation::getRelationId).collect(Collectors.toList());
         result.setSubset(subset);
-
-        result.setMaxFanout(joinTree.getMaxFanout());
 
         List<Comparison> comparisons = JavaConverters.setAsJavaSet(comparisonHyperGraph.getEdges()).stream().map(c -> {
             String op = c.op().getFuncName();

@@ -2,7 +2,7 @@ package sqlplus.compile
 
 import sqlplus.expression.VariableOrdering._
 import sqlplus.catalog.CatalogManager
-import sqlplus.convert.RunResult
+import sqlplus.convert.ConvertResult
 import sqlplus.expression.{BinaryOperator, ComputeExpression, Expression, LiteralExpression, Operator, SingleVariableExpression, UnaryOperator, Variable, VariableManager}
 import sqlplus.graph.{AggregatedRelation, AuxiliaryRelation, BagRelation, Comparison, Relation, TableScanRelation}
 import sqlplus.plan.table.SqlPlusTable
@@ -12,13 +12,12 @@ import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
 class SqlPlusCompiler(val variableManager: VariableManager) {
-    def compile(catalogManager: CatalogManager, runResult: RunResult, formatResult: Boolean): CompileResult = {
+    def compile(catalogManager: CatalogManager, convertResult: ConvertResult, formatResult: Boolean): CompileResult = {
         // TODO: compilation and codegen for aggregation is unsupported yet.
-        assert(runResult.aggregations.isEmpty)
-        assert(runResult.candidates.size == 1)
+        assert(convertResult.aggregations.isEmpty)
 
-        val joinTree = runResult.candidates.head._1
-        val comparisonHyperGraph = runResult.candidates.head._2
+        val joinTree = convertResult.candidates.head._1
+        val comparisonHyperGraph = convertResult.candidates.head._2
 
         val manager = new RelationVariableNamesManager
         val assigner = new VariableNameAssigner
@@ -53,7 +52,7 @@ class SqlPlusCompiler(val variableManager: VariableManager) {
             }
         })
 
-        val finalOutputVariables: List[Variable] = runResult.outputVariables
+        val finalOutputVariables: List[Variable] = convertResult.outputVariables
         val relationStates: Map[Int, RelationState] = relations.map(r => (r.getRelationId(), new RelationState(r))).toMap
         val relationIdToParentId: mutable.HashMap[Int, Int] = mutable.HashMap.empty
         val validRelationIds: mutable.HashSet[Int] = mutable.HashSet.empty[Int]

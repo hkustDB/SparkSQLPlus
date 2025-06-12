@@ -18,9 +18,9 @@ import sqlplus.codegen.SparkSQLPlusExampleCodeGenerator;
 import sqlplus.codegen.SparkSQLPlusExperimentCodeGenerator;
 import sqlplus.compile.CompileResult;
 import sqlplus.compile.SqlPlusCompiler;
+import sqlplus.convert.ConvertResult;
 import sqlplus.convert.ExtraCondition;
 import sqlplus.convert.LogicalPlanConverter;
-import sqlplus.convert.RunResult;
 import sqlplus.convert.TopK;
 import sqlplus.expression.Expression;
 import sqlplus.expression.Variable;
@@ -82,21 +82,21 @@ public class CompileController {
 
             variableManager = new VariableManager();
             LogicalPlanConverter converter = new LogicalPlanConverter(variableManager, catalogManager);
-            RunResult runResult = converter.run(logicalPlan, null, false, false);
-            outputVariables = runResult.outputVariables();
-            computations = runResult.computations();
-            isFull = runResult.isFull();
-            isFreeConnex = runResult.isFreeConnex();
-            groupByVariables = runResult.groupByVariables();
-            aggregations = runResult.aggregations();
-            optTopK = runResult.optTopK();
+            ConvertResult convertResult = converter.run(logicalPlan, null);
+            outputVariables = convertResult.outputVariables();
+            computations = convertResult.computations();
+            isFull = convertResult.isFull();
+            isFreeConnex = convertResult.isFreeConnex();
+            groupByVariables = convertResult.groupByVariables();
+            aggregations = convertResult.aggregations();
+            optTopK = convertResult.optTopK();
 
             if (!isFull) {
                 // is the query is non-full, we add DISTINCT keyword to SparkSQL explicitly
                 sql = sql.replaceFirst("[s|S][e|E][l|L][e|E][c|C][t|T]", "SELECT DISTINCT");
             }
 
-            candidates = scala.collection.JavaConverters.seqAsJavaList(converter.candidatesWithLimit(runResult.candidates(), 4));
+            candidates = scala.collection.JavaConverters.seqAsJavaList(converter.candidatesWithLimit(convertResult.candidates(), 4));
             return mkSubmitResult(candidates);
         } catch (SqlParseException e) {
             throw new RuntimeException(e);
@@ -221,7 +221,7 @@ public class CompileController {
         Result result = new Result();
         result.setCode(200);
 
-        RunResult runResult = RunResult.buildFromSingleResult(
+        ConvertResult convertResult = ConvertResult.buildFromSingleResult(
                 candidates.get(request.getIndex()),
                 outputVariables,
                 computations,
@@ -233,7 +233,7 @@ public class CompileController {
         );
 
         SqlPlusCompiler sqlPlusCompiler = new SqlPlusCompiler(variableManager);
-        compileResult = sqlPlusCompiler.compile(catalogManager, runResult, false);
+        compileResult = sqlPlusCompiler.compile(catalogManager, convertResult, false);
         CodeGenerator codeGenerator = new SparkSQLPlusExampleCodeGenerator(compileResult,
                 "sqlplus.example", "SparkSQLPlusExample");
         StringBuilder builder = new StringBuilder();
