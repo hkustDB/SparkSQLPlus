@@ -1,8 +1,11 @@
 package sqlplus.springboot.dto;
 
 public class Result {
+    public final static String SUCCESS = "success";
+    public final static String FALLBACK = "fallback";
+
     private int code;
-    private String message = "success";
+    private String message = SUCCESS;
     private Object data;
 
     public int getCode() {

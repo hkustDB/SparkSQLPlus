@@ -6,6 +6,7 @@ import org.apache.calcite.sql.SqlNodeList;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.bind.annotation.*;
 import scala.Option;
+import scala.Some;
 import scala.collection.JavaConverters;
 import sqlplus.catalog.CatalogManager;
 import sqlplus.convert.*;
@@ -37,7 +38,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/v1")
 public class RestApiController {
-    @Resource(name="threadPoolTaskExecutor")
+    @Resource(name = "threadPoolTaskExecutor")
     ThreadPoolTaskExecutor executor;
 
     @PostMapping("/parse")
@@ -56,7 +57,7 @@ public class RestApiController {
             LogicalPlanConverter converter = new LogicalPlanConverter(variableManager, catalogManager);
             Context context = converter.traverseLogicalPlan(logicalPlan);
 
-            ConvertResult convertResult;
+            Option<ConvertResult> optConvertResult;
             Option<HandleResult> optDryRunResult = converter.dryRun(context);
             boolean isAcyclic = optDryRunResult.nonEmpty();
             Future<ConvertResult> convertResultFuture = executor.submit(() -> {
@@ -69,19 +70,14 @@ public class RestApiController {
 
             int maxTimeout = timeout.orElse(Integer.MAX_VALUE);
             try {
-                convertResult = convertResultFuture.get(maxTimeout, TimeUnit.MILLISECONDS);
-            } catch (InterruptedException | ExecutionException | TimeoutException e) {
-                if (request.getPlan() != null) {
-                    convertResult = converter.convertHint(context, request.getPlan());
-                } else if (optDryRunResult.nonEmpty()) {
-                    convertResult = converter.convertHandleResult(context, optDryRunResult.get());
-                } else {
-                    convertResult = null;
-                }
+                optConvertResult = Some.apply(convertResultFuture.get(maxTimeout, TimeUnit.MILLISECONDS));
+            } catch (InterruptedException | ExecutionException | TimeoutException e1) {
+                optConvertResult = convertResultOnTimeout(converter, context, request.getPlan(), optDryRunResult);
             }
 
             Result result = new Result();
-            if (convertResult != null) {
+            if (optConvertResult.nonEmpty()) {
+                ConvertResult convertResult = optConvertResult.get();
                 ParseQueryResponse response = new ParseQueryResponse();
                 response.setTables(tables.stream()
                         .map(t -> new Table(t.getTableName(), Arrays.stream(t.getTableColumnNames()).collect(Collectors.toList())))
@@ -120,7 +116,7 @@ public class RestApiController {
             } else {
                 result.setCode(200);
                 result.setData(null);
-                result.setMessage("fallback");
+                result.setMessage(Result.FALLBACK);
                 return result;
             }
         } catch (Exception e) {
@@ -229,5 +225,18 @@ public class RestApiController {
         result.setFixRoot(joinTree.isFixRoot());
 
         return result;
+    }
+
+    private Option<ConvertResult>  convertResultOnTimeout(LogicalPlanConverter converter, Context context,
+                                                            HintNode hint, Option<HandleResult> optDryRunResult) {
+        if (hint != null) {
+            try {
+                return Some.apply(converter.convertHint(context, hint));
+            } catch (Exception e) {
+                return optDryRunResult.map(result -> converter.convertHandleResult(context, result));
+            }
+        } else {
+            return optDryRunResult.map(result -> converter.convertHandleResult(context, result));
+        }
     }
 }
