@@ -120,7 +120,13 @@ public class RestApiController {
                 return result;
             }
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            e.printStackTrace();
+
+            Result result = new Result();
+            result.setCode(200);
+            result.setData(null);
+            result.setMessage(Result.FALLBACK);
+            return result;
         }
     }
 
