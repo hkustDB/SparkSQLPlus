@@ -29,283 +29,48 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
     val gyo: GyoAlgorithm = new GyoAlgorithm
     val ghd: GhdAlgorithm = new GhdAlgorithm
 
-    def isAcyclic(relationalHyperGraph: RelationalHyperGraph): Boolean = {
-        gyo.isAcyclic(relationalHyperGraph)
+    val dryRunHandler = new DryRunHandler(gyo)
+    val acyclicHandler = new AcyclicHandler(gyo)
+    val breakableCyclicHandler = new BreakableCyclicHandler(acyclicHandler)
+    val unbreakableCyclicHandler = new UnbreakableCyclicHandler(ghd)
+    val cyclicHandler = new CyclicHandler(variableManager, breakableCyclicHandler, unbreakableCyclicHandler)
+    val hintHandler = new HintHandler
+
+    def dryRun(context: Context): Option[HandleResult] = {
+        dryRunHandler.handle(context)
     }
 
-    def break(relationalHyperGraph: RelationalHyperGraph): Option[List[(RelationalHyperGraph, List[ExtraCondition])]] = {
-        // a query is breakable if:
-        // 1. Primary Key is nonempty for all relations
-        // 2. There is only one node with 0 in-degree (the fact table)
-        // 3. All the relations are reachable from the fact table
-        // 4. Starting from the fact table, there are more than 1 paths that meet at the same table (e.g., nation in TPCH-Q5)
-        if (relationalHyperGraph.getEdges().exists(r => r.getPrimaryKeys().isEmpty)) {
-            // cond 1 unsatisfied
-            return None
-        }
-
-        // find the fact table (if any)
-        val reachable: mutable.HashMap[Relation, mutable.HashSet[Relation]] = mutable.HashMap.empty
-        val inDegree: mutable.HashMap[Relation, Int] = mutable.HashMap.empty
-        relationalHyperGraph.getEdges().foreach(r => inDegree(r) = 0)
-
-        for {
-            r1 <- relationalHyperGraph.getEdges()
-            r2 <- relationalHyperGraph.getEdges()
-            if r1.relationId < r2.relationId
-        } {
-            val overlap = r1.getNodes().intersect(r2.getNodes())
-            if (overlap.nonEmpty) {
-                if (r1.getPrimaryKeys().subsetOf(overlap)) {
-                    reachable.getOrElseUpdate(r2, mutable.HashSet.empty[Relation]).add(r1)
-                    inDegree(r1) = inDegree(r1) + 1
-                } else if (r2.getPrimaryKeys().subsetOf(overlap)) {
-                    reachable.getOrElseUpdate(r1, mutable.HashSet.empty[Relation]).add(r2)
-                    inDegree(r2) = inDegree(r2) + 1
-                }
-            }
-        }
-
-        if (inDegree.count(t => t._2 == 0) != 1) {
-            // cond 2 unsatisfied
-            return None
-        }
-
-        val fact = inDegree.find(t => t._2 == 0).get._1
-        val queue = mutable.Queue.empty[Relation]
-        val seen = mutable.Set.empty[Relation]
-        val meet = mutable.Set.empty[Relation]
-        queue.enqueue(fact)
-
-        while (queue.nonEmpty) {
-            val head = queue.dequeue()
-            if (!seen.contains(head)) {
-                seen.add(head)
-                if (reachable.contains(head)) {
-                    reachable(head).foreach(r => queue.enqueue(r))
-                }
-            } else {
-                meet.add(head)
-            }
-        }
-
-        if (seen.size < relationalHyperGraph.getEdges().size) {
-            // cond 3 unsatisfied
-            return None
-        }
-
-        if (meet.size > 1 || meet.isEmpty) {
-            // currently, only one meet is supported
-            return None
-        }
-
-        val parents = relationalHyperGraph.getEdges().filter(r => reachable.contains(r) && reachable(r).contains(meet.head))
-        val results = parents.map(p => {
-            // keep the join between p and meet
-            // break the join between other relations and meet by replacing the join variable with a dummy variable
-            // each choice of p results in a different relationalHyperGraph and extraEqualConditions
-            val others = parents - p
-            val meetVariables = meet.head.getVariableList().toSet
-            var updatedHyperGraph = relationalHyperGraph
-            val extraEqualConditions = ListBuffer.empty[ExtraCondition]
-
-            others.foreach(o => {
-                updatedHyperGraph = updatedHyperGraph.removeHyperEdge(o)
-                val intersect = meetVariables.intersect(o.getVariableList().toSet)
-                val replace = intersect.map(v => (v, variableManager.getNewVariable(v.dataType)))
-                val newHyperEdge = o.replaceVariables(replace.toMap)
-                updatedHyperGraph = updatedHyperGraph.addHyperEdge(newHyperEdge)
-                extraEqualConditions.appendAll(replace.map(t => ExtraEqualToCondition(SingleVariableExpression(t._1), SingleVariableExpression(t._2))))
-            })
-
-            (updatedHyperGraph, extraEqualConditions.toList)
-        })
-        Some(results.toList)
+    def convertAcyclic(context: Context): ConvertResult = {
+        val handleResult = acyclicHandler.handle(context)
+        convertHandleResult(context, handleResult)
     }
 
-    def tryFixRoot(relationalHyperGraph: RelationalHyperGraph, isAggregation: Boolean, groupByVariables: Set[Variable]): List[Relation] = {
-        // candidate relation(s): size >= factor * largest relation size
-        val factor = 0.8
-
-        // we can fix the root of a query if
-        // 1. It is an aggregation query
-        // 2. Every relation have cardinality > 0
-        // 3. Every relation have nonempty Primary Key
-        // 4. The candidate relation does not contain any group by variables
-        //  (the plan will be returned by GYO without fix root if the largest relation contains some group by variables)
-        // 5. The variables in the candidate relation determine the group by variables
-        if (!isAggregation || relationalHyperGraph.getEdges().exists(r => r.getCardinality() <= 0 || r.getPrimaryKeys().isEmpty))
-            return List()
-
-        val largestCardinality = relationalHyperGraph.getEdges().map(r => r.getCardinality()).max
-        val largestRelations = relationalHyperGraph.getEdges().filter(r => r.getCardinality() >= largestCardinality * factor)
-
-        val candidateRelations = largestRelations.filter(r => r.getNodes().intersect(groupByVariables).isEmpty)
-
-        val chaseVariables = mutable.HashMap.empty[Relation, Set[Variable]]
-        relationalHyperGraph.getEdges().foreach(r => {
-            chaseVariables(r) = r.getNodes()
-        })
-
-        def loop(): Unit = {
-            for {
-                r1 <- relationalHyperGraph.getEdges()
-                r2 <- relationalHyperGraph.getEdges()
-                if r1 != r2
-            } {
-                if (r1.getPrimaryKeys().subsetOf(chaseVariables(r2)) && !chaseVariables(r1).subsetOf(chaseVariables(r2))) {
-                    chaseVariables(r2) = chaseVariables(r2).union(chaseVariables(r1))
-                    return loop()
-                } else if (r2.getPrimaryKeys().subsetOf(chaseVariables(r1)) && !chaseVariables(r2).subsetOf(chaseVariables(r1))) {
-                    chaseVariables(r1) = chaseVariables(r1).union(chaseVariables(r2))
-                    return loop()
-                }
-            }
-        }
-
-        loop()
-        candidateRelations.filter(r => chaseVariables(r).containsAll(groupByVariables)).toList
+    def convertCyclic(context: Context): ConvertResult = {
+        val handleResult = cyclicHandler.handle(context)
+        convertHandleResult(context, handleResult)
     }
 
-    def runGyo(relationalHyperGraph: RelationalHyperGraph,
-               aggregations: List[(Variable, String, List[Expression])],
-               groupByVariables: Set[Variable], topVariables: Set[Variable]): (List[(JoinTree, RelationalHyperGraph, List[ExtraCondition])], Boolean) = {
-        // first run GYO without fixRoot
-        val gyoResult = gyo.run(relationalHyperGraph, topVariables)
-        val withoutFixRoot = (gyoResult.candidates.map(t => (t._1, t._2, List.empty)), gyoResult.isFreeConnex)
-
-        val optFixRoot = tryFixRoot(relationalHyperGraph, aggregations.nonEmpty, groupByVariables)
-        if (optFixRoot.nonEmpty) {
-            optFixRoot.foldLeft(withoutFixRoot)((z, r) => {
-                val gyoResult = gyo.runWithFixRoot(relationalHyperGraph, r)
-                val withFixRoot = (gyoResult.candidates.map(t => (t._1, t._2, List.empty)), gyoResult.isFreeConnex)
-                (z._1 ++ withFixRoot._1, z._2)
-            })
-        } else {
-            // unable to fix root
-            withoutFixRoot
-        }
+    def convertHint(context: Context, hint: HintNode): ConvertResult = {
+        val handleResult = hintHandler.handle(context, hint)
+        convertHandleResult(context, handleResult)
     }
 
-    def buildFromHint(hint: HintNode, relationalHyperGraph: RelationalHyperGraph, topVariables: Set[Variable]): (List[(JoinTree, RelationalHyperGraph, List[ExtraCondition])], Boolean) = {
-        val relations = relationalHyperGraph.getEdges().flatMap(r => {
-            if (r.getTableDisplayName() == r.getTableName()) {
-                Set((r.getTableDisplayName(), r))
-            } else {
-                Set((r.getTableDisplayName(), r), (r.getTableName(), r))
-            }
-        }).toMap
-        val parents = mutable.HashMap.empty[Relation, Relation]
-        val edges = mutable.HashSet.empty[JoinTreeEdge]
-        val subset = mutable.HashSet.empty[Relation]
-        val uncovered = mutable.HashSet.empty[Variable]
-        uncovered.addAll(topVariables)
-        val visited = mutable.HashSet.empty[Relation]
-        var isFreeConnex = true
-
-        def visit(node: HintNode, parent: HintNode): Unit = {
-            val relation = relations(node.getRelation)
-            if (visited.contains(relation)) {
-                throw new RuntimeException(s"${relation.getTableDisplayName()} is duplicated in the given hint plan.")
-            }
-            visited.add(relation)
-
-            if (parent != null) {
-                parents(relation) = relations(parent.getRelation)
-                edges.add(new JoinTreeEdge(relations(parent.getRelation), relation))
-            }
-
-            if (uncovered.intersect(relation.getNodes()).nonEmpty) {
-                var p = parents.getOrElse(relation, null)
-                while (p != null) {
-                    if (!subset.contains(p)) {
-                        isFreeConnex = false
-                        subset.add(p)
-                        p = parents.getOrElse(p, null)
-                    } else {
-                        p = null
-                    }
-                }
-
-                subset.add(relation)
-                relation.getNodes().foreach(v => uncovered.remove(v))
-            }
-
-            if (node.getChildren != null) {
-                node.getChildren.foreach(n => visit(n, node))
-            }
-        }
-
-        visit(hint, null)
-
-        if (uncovered.nonEmpty) {
-            throw new RuntimeException("Some variables are uncovered by the given hint plan.")
-        }
-
-        if (visited.size != relationalHyperGraph.getEdges().size) {
-            throw new RuntimeException("Some hyperedges are uncovered by the given hint plan.")
-        }
-
-        val root = relations(hint.getRelation)
-        (List((JoinTree(root, edges.toSet, subset.toSet, isFreeConnex), relationalHyperGraph, List.empty[ExtraCondition])), isFreeConnex)
+    def candidatesWithLimit(list: List[(JoinTree, ComparisonHyperGraph, List[ExtraCondition])], limit: Int): List[(JoinTree, ComparisonHyperGraph, List[ExtraCondition])] = {
+        val zippedWithDegree = list.map(t => (t._1, t._2, t._3, t._2.getDegree()))
+        val minDegree = zippedWithDegree.map(t => t._4).min
+        zippedWithDegree.filter(t => t._4 == minDegree).take(limit).map(t => (t._1, t._2, t._3))
     }
 
-    def run(root: RelNode, hint: HintNode = null): ConvertResult = {
-        val context = traverseLogicalPlan(root)
-        val relations = context.relations
-        val conditions = context.conditions
-        val outputVariables = context.outputVariables
-        val requiredVariables = context.requiredVariables
-        val computations = context.computations.toList
-        val isFull = context.isFull
-        val groupByVariables = context.groupByVariables
-        val aggregations = context.aggregations
-        val optTopK = context.optTopK
-        val relationalHyperGraph = relations.foldLeft(RelationalHyperGraph.EMPTY)((g, r) => g.addHyperEdge(r))
-
-        val topVariables = if (aggregations.nonEmpty && groupByVariables.nonEmpty) groupByVariables.toSet else requiredVariables
-
-        val (candidatesFromResults, isFreeConnex) = if (hint != null) {
-            buildFromHint(hint, relationalHyperGraph, topVariables)
-        } else if (isAcyclic(relationalHyperGraph)) {
-            // for acyclic queries, run GYO Algorithm
-            runGyo(relationalHyperGraph, aggregations, groupByVariables.toSet, topVariables)
-        } else {
-            // try to break cyclic queries
-            val optBreakResult = break(relationalHyperGraph)
-            if (optBreakResult.nonEmpty) {
-                // for breakable cyclic queries, break and then run GYO Algorithm
-                val hyperGraphAndExtraConditions = optBreakResult.get
-                val runGyoResult = hyperGraphAndExtraConditions.map(t => {
-                    val hyperGraph = t._1
-                    val extraConditions = t._2
-                    val (candidates, isFreeConnex) =  runGyo(hyperGraph, aggregations, groupByVariables.toSet, topVariables)
-                    val candidatesWithExtraConditions = candidates.map(t => (t._1, t._2, t._3 ++ extraConditions))
-                    (candidatesWithExtraConditions, isFreeConnex)
-                })
-                // if free-connex is possible, return the free connex candidates only
-                val isFreeConnexPossible = runGyoResult.exists(t => t._2)
-                if (isFreeConnexPossible) {
-                    (runGyoResult.filter(t => t._2).flatMap(t => t._1), true)
-                } else {
-                    (runGyoResult.flatMap(t => t._1), false)
-                }
-            } else {
-                // for unbreakable cyclic queries, run GHD Algorithm
-                val ghdResult = ghd.run(relationalHyperGraph, topVariables)
-                // There is no extra condition in GHD plans
-                (ghdResult.candidates.map(t => (t._1, t._2, List.empty)), false)
-            }
-        }
-
-        val candidates: List[(JoinTree, ComparisonHyperGraph, List[ExtraCondition])] = candidatesFromResults.flatMap(t => {
+    def convertHandleResult(context: Context, handleResult: HandleResult): ConvertResult = {
+        val candidatesBuffer = ListBuffer.empty[(JoinTree, ComparisonHyperGraph, List[ExtraCondition])]
+        handleResult.result.foreach(t => {
             val joinTree = t._1
             val hyperGraph = t._2
-            val extraEqualConditions = ListBuffer.empty[ExtraCondition]
-            extraEqualConditions.appendAll(t._3)
+            val extraEqualConditionsBuffer = ListBuffer.empty[ExtraCondition]
+            extraEqualConditionsBuffer.appendAll(t._3)
 
             val comparisonHyperEdges = ListBuffer.empty[Comparison]
-            conditions.foreach {
+            context.conditions.foreach {
                 case LessThanCondition(leftOperand, rightOperand) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, leftOperand, rightOperand).toSet
                     val op = Operator.getOperator("<", leftOperand, rightOperand, false)
@@ -340,13 +105,13 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
                     comparisonHyperEdges.append(Comparison(path, op, operand, operand))
                 case OrCondition(conditions, involved) =>
                     val involvedVariables = involved.flatMap(e => e.getVariables())
-                    val optPushedDownRelation = relations.find(r => r.isInstanceOf[TableScanRelation] && involvedVariables.subsetOf(r.getNodes()))
+                    val optPushedDownRelation = context.relations.find(r => r.isInstanceOf[TableScanRelation] && involvedVariables.subsetOf(r.getNodes()))
                     if (optPushedDownRelation.nonEmpty) {
                         val path = new JoinTreeEdge(optPushedDownRelation.get, optPushedDownRelation.get)
                         val op = OrOperator(conditions)
                         comparisonHyperEdges.append(Comparison(Set(path), op, DummyExpression, DummyExpression))
                     } else {
-                        extraEqualConditions.append(ExtraOrCondition(conditions))
+                        extraEqualConditionsBuffer.append(ExtraOrCondition(conditions))
                     }
                 case IsNullCondition(operand) =>
                     val path = getShortestInRelationalHyperGraph(hyperGraph.getEdges(), joinTree, operand, operand).toSet
@@ -357,30 +122,16 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
                     val op = Operator.getOperator("IS NOT NULL")
                     comparisonHyperEdges.append(Comparison(path, op, operand, operand))
                 case ex: ExtraCondition =>
-                    extraEqualConditions.append(ex)
+                    extraEqualConditionsBuffer.append(ex)
             }
 
             val comparisonHyperGraph = new ComparisonHyperGraph(comparisonHyperEdges.toSet)
-
-            // joinTreesWithComparisonHyperGraph is a candidate(for selection of minimum degree)
-            // only when the comparisonHyperGraph is berge-acyclic
             if (comparisonHyperGraph.isBergeAcyclic())
-                List((joinTree, comparisonHyperGraph, extraEqualConditions.toList))
-            else
-                List.empty
+                candidatesBuffer.append((joinTree, comparisonHyperGraph, extraEqualConditionsBuffer.toList))
         })
 
-        ConvertResult(candidates, outputVariables, computations, isFull, isFreeConnex, groupByVariables, aggregations, optTopK)
-    }
-
-    def candidatesWithLimit(list: List[(JoinTree, ComparisonHyperGraph, List[ExtraCondition])], limit: Int): List[(JoinTree, ComparisonHyperGraph, List[ExtraCondition])] = {
-        val zippedWithDegree = list.map(t => (t._1, t._2, t._3, t._2.getDegree()))
-        val minDegree = zippedWithDegree.map(t => t._4).min
-        zippedWithDegree.filter(t => t._4 == minDegree).take(limit).map(t => (t._1, t._2, t._3))
-    }
-
-    def runWithHint(root: RelNode, hint: HintNode): ConvertResult = {
-        run(root, hint)
+        ConvertResult(candidatesBuffer.toList, context.outputVariables, context.computations.toList, context.isFull,
+            context.groupByVariables, context.aggregations, context.optTopK)
     }
 
     def traverseLogicalPlan(node: RelNode): Context = {

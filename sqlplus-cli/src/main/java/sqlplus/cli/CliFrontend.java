@@ -13,6 +13,7 @@ import sqlplus.codegen.CodeGenerator;
 import sqlplus.codegen.SparkSQLPlusExampleCodeGenerator;
 import sqlplus.compile.CompileResult;
 import sqlplus.compile.SqlPlusCompiler;
+import sqlplus.convert.Context;
 import sqlplus.convert.ConvertResult;
 import sqlplus.convert.LogicalPlanConverter;
 import sqlplus.expression.VariableManager;
@@ -81,7 +82,14 @@ public class CliFrontend {
 
             VariableManager variableManager = new VariableManager();
             LogicalPlanConverter converter = new LogicalPlanConverter(variableManager, catalogManager);
-            ConvertResult convertResult = converter.run(logicalPlan, null);
+            Context context = converter.traverseLogicalPlan(logicalPlan);
+            boolean isAcyclic = converter.dryRun(context).nonEmpty();
+            ConvertResult convertResult = null;
+            if (isAcyclic) {
+                convertResult = converter.convertAcyclic(context);
+            } else {
+                convertResult = converter.convertCyclic(context);
+            }
 
             SqlPlusCompiler sqlPlusCompiler = new SqlPlusCompiler(variableManager);
             CompileResult compileResult = sqlPlusCompiler.compile(catalogManager, convertResult, true);

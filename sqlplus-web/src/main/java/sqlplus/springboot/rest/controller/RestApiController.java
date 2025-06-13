@@ -5,11 +5,10 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.bind.annotation.*;
+import scala.Option;
 import scala.collection.JavaConverters;
 import sqlplus.catalog.CatalogManager;
-import sqlplus.convert.ConvertResult;
-import sqlplus.convert.ExtraCondition;
-import sqlplus.convert.LogicalPlanConverter;
+import sqlplus.convert.*;
 import sqlplus.expression.Expression;
 import sqlplus.expression.Variable;
 import sqlplus.expression.VariableManager;
@@ -23,6 +22,7 @@ import sqlplus.springboot.rest.object.Comparison;
 import sqlplus.springboot.rest.object.JoinTree;
 import sqlplus.springboot.rest.object.JoinTreeEdge;
 import sqlplus.springboot.rest.object.*;
+import sqlplus.springboot.rest.object.TopK;
 import sqlplus.springboot.rest.request.ParseQueryRequest;
 import sqlplus.springboot.rest.response.ParseQueryResponse;
 
@@ -54,59 +54,75 @@ public class RestApiController {
 
             VariableManager variableManager = new VariableManager();
             LogicalPlanConverter converter = new LogicalPlanConverter(variableManager, catalogManager);
+            Context context = converter.traverseLogicalPlan(logicalPlan);
 
-            ConvertResult runResult;
-            if (request.getPlan() == null) {
-                runResult = converter.run(logicalPlan, null);
-            } else {
-                Future<ConvertResult> runResultFuture = executor.submit(() -> converter.run(logicalPlan, null));
+            ConvertResult convertResult;
+            Option<HandleResult> optDryRunResult = converter.dryRun(context);
+            boolean isAcyclic = optDryRunResult.nonEmpty();
+            Future<ConvertResult> convertResultFuture = executor.submit(() -> {
+                if (isAcyclic) {
+                    return converter.convertAcyclic(context);
+                } else {
+                    return converter.convertCyclic(context);
+                }
+            });
 
-                int maxTimeout = timeout.orElse(Integer.MAX_VALUE);
-
-                try {
-                    runResult = runResultFuture.get(maxTimeout, TimeUnit.MILLISECONDS);
-                } catch (InterruptedException | ExecutionException | TimeoutException e) {
-                    runResult = converter.runWithHint(logicalPlan, request.getPlan());
+            int maxTimeout = timeout.orElse(Integer.MAX_VALUE);
+            try {
+                convertResult = convertResultFuture.get(maxTimeout, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException | ExecutionException | TimeoutException e) {
+                if (request.getPlan() != null) {
+                    convertResult = converter.convertHint(context, request.getPlan());
+                } else if (optDryRunResult.nonEmpty()) {
+                    convertResult = converter.convertHandleResult(context, optDryRunResult.get());
+                } else {
+                    convertResult = null;
                 }
             }
 
-            ParseQueryResponse response = new ParseQueryResponse();
-            response.setTables(tables.stream()
-                    .map(t -> new Table(t.getTableName(), Arrays.stream(t.getTableColumnNames()).collect(Collectors.toList())))
-                    .collect(Collectors.toList()));
-
-            List<JoinTree> joinTrees = JavaConverters.seqAsJavaList(runResult.candidates()).stream()
-                    .map(t -> buildJoinTree(t._1(), t._2(), t._3(), request.getPlan()))
-                    .collect(Collectors.toList());
-            response.setJoinTrees(joinTrees);
-
-            List<Computation> computations = JavaConverters.seqAsJavaList(runResult.computations()).stream()
-                    .map(c -> new Computation(c._1.name(), c._2.format()))
-                    .collect(Collectors.toList());
-            response.setComputations(computations);
-
-            response.setOutputVariables(JavaConverters.seqAsJavaList(runResult.outputVariables()).stream().map(Variable::name).collect(Collectors.toList()));
-            response.setGroupByVariables(JavaConverters.seqAsJavaList(runResult.groupByVariables()).stream().map(Variable::name).collect(Collectors.toList()));
-            List<Aggregation> aggregations = JavaConverters.seqAsJavaList(runResult.aggregations()).stream()
-                    .map(t -> new Aggregation(t._1().name(), t._2(), JavaConverters.seqAsJavaList(t._3()).stream().map(Expression::format).collect(Collectors.toList())))
-                    .collect(Collectors.toList());
-            response.setAggregations(aggregations);
-
-            if (runResult.optTopK().nonEmpty()) {
-                TopK topK = new TopK();
-                topK.setOrderByVariable(runResult.optTopK().get().sortBy().name());
-                topK.setDesc(runResult.optTopK().get().isDesc());
-                topK.setLimit(runResult.optTopK().get().limit());
-                response.setTopK(topK);
-            }
-
-            response.setFull(runResult.isFull());
-            response.setFreeConnex(runResult.isFreeConnex());
-
             Result result = new Result();
-            result.setCode(200);
-            result.setData(response);
-            return result;
+            if (convertResult != null) {
+                ParseQueryResponse response = new ParseQueryResponse();
+                response.setTables(tables.stream()
+                        .map(t -> new Table(t.getTableName(), Arrays.stream(t.getTableColumnNames()).collect(Collectors.toList())))
+                        .collect(Collectors.toList()));
+
+                List<JoinTree> joinTrees = JavaConverters.seqAsJavaList(convertResult.candidates()).stream()
+                        .map(t -> buildJoinTree(t._1(), t._2(), t._3(), request.getPlan()))
+                        .collect(Collectors.toList());
+                response.setJoinTrees(joinTrees);
+
+                List<Computation> computations = JavaConverters.seqAsJavaList(convertResult.computations()).stream()
+                        .map(c -> new Computation(c._1.name(), c._2.format()))
+                        .collect(Collectors.toList());
+                response.setComputations(computations);
+
+                response.setOutputVariables(JavaConverters.seqAsJavaList(convertResult.outputVariables()).stream().map(Variable::name).collect(Collectors.toList()));
+                response.setGroupByVariables(JavaConverters.seqAsJavaList(convertResult.groupByVariables()).stream().map(Variable::name).collect(Collectors.toList()));
+                List<Aggregation> aggregations = JavaConverters.seqAsJavaList(convertResult.aggregations()).stream()
+                        .map(t -> new Aggregation(t._1().name(), t._2(), JavaConverters.seqAsJavaList(t._3()).stream().map(Expression::format).collect(Collectors.toList())))
+                        .collect(Collectors.toList());
+                response.setAggregations(aggregations);
+
+                if (convertResult.optTopK().nonEmpty()) {
+                    TopK topK = new TopK();
+                    topK.setOrderByVariable(convertResult.optTopK().get().sortBy().name());
+                    topK.setDesc(convertResult.optTopK().get().isDesc());
+                    topK.setLimit(convertResult.optTopK().get().limit());
+                    response.setTopK(topK);
+                }
+
+                response.setFull(convertResult.isFull());
+
+                result.setCode(200);
+                result.setData(response);
+                return result;
+            } else {
+                result.setCode(200);
+                result.setData(null);
+                result.setMessage("fallback");
+                return result;
+            }
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

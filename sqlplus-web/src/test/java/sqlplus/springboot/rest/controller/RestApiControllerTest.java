@@ -88,9 +88,6 @@ public class RestApiControllerTest {
 
         // isFull
         assertFalse((Boolean) data.get("full"));
-
-        // isFreeConnex
-        assertFalse((Boolean) data.get("freeConnex"));
     }
 
     @Test
@@ -155,9 +152,6 @@ public class RestApiControllerTest {
 
         // isFull
         assertTrue((Boolean) data.get("full"));
-
-        // isFreeConnex
-        assertTrue((Boolean) data.get("freeConnex"));
     }
 
     @Test

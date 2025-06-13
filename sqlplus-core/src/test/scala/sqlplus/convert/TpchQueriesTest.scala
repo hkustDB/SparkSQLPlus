@@ -1,5 +1,6 @@
 package sqlplus.convert
 
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import sqlplus.catalog.CatalogManager
 import sqlplus.expression.VariableManager
@@ -138,7 +139,11 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
     @Test
@@ -165,7 +170,11 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
     @Test
@@ -215,7 +224,11 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
     @Test
@@ -245,7 +258,11 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
     @Test
@@ -283,7 +300,11 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
     @Test
@@ -318,7 +339,12 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.isEmpty)
+        val convertResult = converter.convertCyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
+        assertTrue(convertResult.candidates.forall(t => t._3.nonEmpty))
     }
 
     @Test
@@ -341,7 +367,11 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
     @Test
@@ -385,7 +415,11 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
     @Test
@@ -430,7 +464,11 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
     @Test
@@ -467,7 +505,11 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
     @Test
@@ -503,7 +545,11 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
     @Test
@@ -529,7 +575,11 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
     @Test
@@ -568,7 +618,11 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
     @Test
@@ -595,7 +649,11 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
     @Test
@@ -651,7 +709,11 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
     @Test
@@ -692,7 +754,11 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
     @Test
@@ -737,7 +803,11 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
     @Test
@@ -765,13 +835,18 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
+    // TODO: support cross product. Remove the two dummy columns.
     @Test
     def testTpchQ20View3(): Unit = {
         /**
-         * SELECT p_partkey
+         * SELECT 1, p_partkey
          *  FROM part
          *  WHERE p_name LIKE 'forest%'
          */
@@ -779,12 +854,13 @@ class TpchQueriesTest {
             """
               |CREATE TABLE view1
               |(
-              |    v1_partkey INTEGER
+              |    v1_partkey INTEGER,
+              |    v1_dummy   INTEGER
               |);
               |""".stripMargin
 
         /**
-         * SELECT 0.5 * SUM(l_quantity)
+         * SELECT 1, 0.5 * SUM(l_quantity)
          *  FROM lineitem
          *  WHERE l_partkey = ps_partkey
          *  AND l_suppkey = ps_suppkey
@@ -795,7 +871,8 @@ class TpchQueriesTest {
             """
               |CREATE TABLE view2
               |(
-              |    v2_quantity_sum DECIMAL
+              |    v2_quantity_sum DECIMAL,
+              |    v2_dummy        INTEGER
               |);
               |""".stripMargin
 
@@ -807,6 +884,7 @@ class TpchQueriesTest {
               |     view2
               |WHERE ps_partkey = v1_partkey
               |  AND ps_availqty > v2_quantity_sum
+              |  AND v1_dummy = v2_dummy
               |""".stripMargin
 
         val nodeList = SqlPlusParser.parseDdl(ddl + ddlView1 + ddlView2)
@@ -817,7 +895,11 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 
     @Test
@@ -850,6 +932,10 @@ class TpchQueriesTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
     }
 }

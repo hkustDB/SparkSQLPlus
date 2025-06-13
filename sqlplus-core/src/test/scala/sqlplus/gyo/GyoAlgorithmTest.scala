@@ -1,6 +1,6 @@
 package sqlplus.gyo
 
-import org.junit.Assert.{assertFalse, assertTrue}
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import sqlplus.expression.VariableManager
 import sqlplus.graph.{RelationalHyperGraph, TableScanRelation}
@@ -159,7 +159,7 @@ class GyoAlgorithmTest {
 
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
 
-        assertTrue(algorithm.isAcyclic(hyperGraph))
+        assertTrue(algorithm.dryRun(hyperGraph, Set()).nonEmpty)
     }
 
     @Test
@@ -177,6 +177,6 @@ class GyoAlgorithmTest {
 
         val hyperGraph = RelationalHyperGraph.EMPTY.addHyperEdge(r1).addHyperEdge(r2).addHyperEdge(r3)
 
-        assertFalse(algorithm.isAcyclic(hyperGraph))
+        assertTrue(algorithm.dryRun(hyperGraph, Set()).isEmpty)
     }
 }

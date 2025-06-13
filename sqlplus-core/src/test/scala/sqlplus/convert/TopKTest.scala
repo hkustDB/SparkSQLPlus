@@ -39,16 +39,20 @@ class TopKTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        val runResult = converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
 
-        assertTrue(runResult.isFull)
-        assertTrue(runResult.outputVariables.size == 4)
-        assertTrue(runResult.groupByVariables.isEmpty)
-        assertTrue(runResult.aggregations.isEmpty)
+        assertTrue(convertResult.isFull)
+        assertTrue(convertResult.outputVariables.size == 4)
+        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.aggregations.isEmpty)
 
-        assertTrue(runResult.candidates.size == 2)
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "R"))
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "S"))
+        assertTrue(convertResult.candidates.size == 2)
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "R"))
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "S"))
     }
 
     @Test
@@ -84,17 +88,21 @@ class TopKTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        val runResult = converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
 
-        assertTrue(runResult.isFull)
-        assertTrue(runResult.outputVariables.size == 5)
-        assertTrue(runResult.groupByVariables.isEmpty)
-        assertTrue(runResult.aggregations.isEmpty)
+        assertTrue(convertResult.isFull)
+        assertTrue(convertResult.outputVariables.size == 5)
+        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.aggregations.isEmpty)
 
-        assertTrue(runResult.candidates.size == 3)
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "R"))
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "S"))
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "T"))
+        assertTrue(convertResult.candidates.size == 3)
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "R"))
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "S"))
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "T"))
     }
 
     @Test
@@ -137,18 +145,22 @@ class TopKTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        val runResult = converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
 
-        assertTrue(runResult.isFull)
-        assertTrue(runResult.outputVariables.size == 6)
-        assertTrue(runResult.groupByVariables.isEmpty)
-        assertTrue(runResult.aggregations.isEmpty)
+        assertTrue(convertResult.isFull)
+        assertTrue(convertResult.outputVariables.size == 6)
+        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.aggregations.isEmpty)
 
-        assertTrue(runResult.candidates.size == 4)
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "R"))
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "S"))
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "T"))
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "U"))
+        assertTrue(convertResult.candidates.size == 4)
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "R"))
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "S"))
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "T"))
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "U"))
     }
 
     @Test
@@ -184,17 +196,21 @@ class TopKTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        val runResult = converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
 
-        assertTrue(runResult.isFull)
-        assertTrue(runResult.outputVariables.size == 5)
-        assertTrue(runResult.groupByVariables.isEmpty)
-        assertTrue(runResult.aggregations.isEmpty)
+        assertTrue(convertResult.isFull)
+        assertTrue(convertResult.outputVariables.size == 5)
+        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.aggregations.isEmpty)
 
-        assertTrue(runResult.candidates.size == 9)
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "R"))
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "S"))
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "T"))
+        assertTrue(convertResult.candidates.size == 9)
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "R"))
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "S"))
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "T"))
     }
 
     @Test
@@ -237,17 +253,21 @@ class TopKTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        val runResult = converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
+        assertTrue(convertResult.candidates.nonEmpty)
 
-        assertTrue(runResult.isFull)
-        assertTrue(runResult.outputVariables.size == 6)
-        assertTrue(runResult.groupByVariables.isEmpty)
-        assertTrue(runResult.aggregations.isEmpty)
+        assertTrue(convertResult.isFull)
+        assertTrue(convertResult.outputVariables.size == 6)
+        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.aggregations.isEmpty)
 
-        assertTrue(runResult.candidates.size == 12)
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "R"))
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "S"))
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "T"))
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "U"))
+        assertTrue(convertResult.candidates.size == 12)
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "R"))
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "S"))
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "T"))
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "U"))
     }
 }

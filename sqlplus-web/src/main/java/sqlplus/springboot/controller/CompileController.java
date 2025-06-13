@@ -8,6 +8,7 @@ import org.apache.commons.io.FileUtils;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+import scala.Option;
 import scala.Tuple2;
 import scala.Tuple3;
 import scala.collection.mutable.StringBuilder;
@@ -18,10 +19,7 @@ import sqlplus.codegen.SparkSQLPlusExampleCodeGenerator;
 import sqlplus.codegen.SparkSQLPlusExperimentCodeGenerator;
 import sqlplus.compile.CompileResult;
 import sqlplus.compile.SqlPlusCompiler;
-import sqlplus.convert.ConvertResult;
-import sqlplus.convert.ExtraCondition;
-import sqlplus.convert.LogicalPlanConverter;
-import sqlplus.convert.TopK;
+import sqlplus.convert.*;
 import sqlplus.expression.Expression;
 import sqlplus.expression.Variable;
 import sqlplus.expression.VariableManager;
@@ -46,8 +44,6 @@ public class CompileController {
     private scala.collection.immutable.List<Tuple2<Variable, Expression>> computations = null;
 
     private boolean isFull = false;
-
-    private boolean isFreeConnex = false;
 
     private scala.collection.immutable.List<Variable> groupByVariables = null;
 
@@ -82,11 +78,19 @@ public class CompileController {
 
             variableManager = new VariableManager();
             LogicalPlanConverter converter = new LogicalPlanConverter(variableManager, catalogManager);
-            ConvertResult convertResult = converter.run(logicalPlan, null);
+
+            Context context = converter.traverseLogicalPlan(logicalPlan);
+            boolean isAcyclic = converter.dryRun(context).nonEmpty();
+            ConvertResult convertResult = null;
+            if (isAcyclic) {
+                convertResult = converter.convertAcyclic(context);
+            } else {
+                convertResult = converter.convertCyclic(context);
+            }
+
             outputVariables = convertResult.outputVariables();
             computations = convertResult.computations();
             isFull = convertResult.isFull();
-            isFreeConnex = convertResult.isFreeConnex();
             groupByVariables = convertResult.groupByVariables();
             aggregations = convertResult.aggregations();
             optTopK = convertResult.optTopK();
@@ -226,7 +230,6 @@ public class CompileController {
                 outputVariables,
                 computations,
                 isFull,
-                isFreeConnex,
                 groupByVariables,
                 aggregations,
                 optTopK

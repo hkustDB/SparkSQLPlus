@@ -35,22 +35,24 @@ class LogicalPlanConverterTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        val runResult = converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
 
-        assertTrue(runResult.isFull)
-        assertTrue(runResult.isFreeConnex)
-        assertTrue(runResult.outputVariables.size == 4)
-        assertTrue(runResult.groupByVariables.isEmpty)
-        assertTrue(runResult.aggregations.isEmpty)
+        assertTrue(convertResult.isFull)
+        assertTrue(convertResult.outputVariables.size == 4)
+        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.aggregations.isEmpty)
 
-        assertTrue(runResult.candidates.size == 3)
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g1"))
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g2"))
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g3"))
+        assertTrue(convertResult.candidates.size == 3)
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g1"))
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g2"))
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g3"))
 
-        assertTrue(runResult.candidates.forall(t => t._1.subset.exists(r => r.getTableDisplayName() == "g1")))
-        assertTrue(runResult.candidates.forall(t => t._1.subset.exists(r => r.getTableDisplayName() == "g2")))
-        assertTrue(runResult.candidates.forall(t => t._1.subset.exists(r => r.getTableDisplayName() == "g3")))
+        assertTrue(convertResult.candidates.forall(t => t._1.subset.exists(r => r.getTableDisplayName() == "g1")))
+        assertTrue(convertResult.candidates.forall(t => t._1.subset.exists(r => r.getTableDisplayName() == "g2")))
+        assertTrue(convertResult.candidates.forall(t => t._1.subset.exists(r => r.getTableDisplayName() == "g3")))
     }
 
     @Test
@@ -79,19 +81,21 @@ class LogicalPlanConverterTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        val runResult = converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
 
-        assertFalse(runResult.isFull)
-        assertTrue(runResult.isFreeConnex)
-        assertTrue(runResult.outputVariables.size == 2)
-        assertTrue(runResult.groupByVariables.isEmpty)
-        assertTrue(runResult.aggregations.isEmpty)
+        assertFalse(convertResult.isFull)
+        assertTrue(convertResult.outputVariables.size == 2)
+        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.aggregations.isEmpty)
 
-        assertTrue(runResult.candidates.size == 1)
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g2"))
+        assertTrue(convertResult.candidates.size == 1)
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g2"))
 
-        assertTrue(runResult.candidates.head._1.subset.size == 1)
-        assertTrue(runResult.candidates.head._1.subset.head.getTableDisplayName() == "g2")
+        assertTrue(convertResult.candidates.head._1.subset.size == 1)
+        assertTrue(convertResult.candidates.head._1.subset.head.getTableDisplayName() == "g2")
     }
 
     @Test
@@ -120,20 +124,22 @@ class LogicalPlanConverterTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        val runResult = converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
 
-        assertFalse(runResult.isFull)
-        assertTrue(runResult.isFreeConnex)
-        assertTrue(runResult.outputVariables.size == 1)
-        assertTrue(runResult.groupByVariables.isEmpty)
-        assertTrue(runResult.aggregations.isEmpty)
+        assertFalse(convertResult.isFull)
+        assertTrue(convertResult.outputVariables.size == 1)
+        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.aggregations.isEmpty)
 
-        assertTrue(runResult.candidates.size == 1)
-        val root = runResult.candidates.head._1.root
+        assertTrue(convertResult.candidates.size == 1)
+        val root = convertResult.candidates.head._1.root
         assertTrue(root.isInstanceOf[AuxiliaryRelation])
         assertTrue(root.getVariableList().size == 1)
-        assertTrue(runResult.candidates.head._1.subset.size == 1)
-        assertTrue(runResult.candidates.head._1.subset.contains(root))
+        assertTrue(convertResult.candidates.head._1.subset.size == 1)
+        assertTrue(convertResult.candidates.head._1.subset.contains(root))
     }
 
     @Test
@@ -162,21 +168,23 @@ class LogicalPlanConverterTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        val runResult = converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
 
-        assertFalse(runResult.isFull)
-        assertTrue(runResult.isFreeConnex)
-        assertTrue(runResult.outputVariables.size == 3)
-        assertTrue(runResult.groupByVariables.isEmpty)
-        assertTrue(runResult.aggregations.isEmpty)
+        assertFalse(convertResult.isFull)
+        assertTrue(convertResult.outputVariables.size == 3)
+        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.aggregations.isEmpty)
 
-        assertTrue(runResult.candidates.size == 2)
-        val jointree1 = runResult.candidates.find(t => t._1.root.getTableDisplayName() == "g2").get._1
+        assertTrue(convertResult.candidates.size == 2)
+        val jointree1 = convertResult.candidates.find(t => t._1.root.getTableDisplayName() == "g2").get._1
         assertTrue(jointree1.subset.size == 2)
         assertTrue(jointree1.subset.exists(r => r.getTableDisplayName() == "g2"))
         assertTrue(jointree1.subset.exists(r => r.getTableDisplayName() == "g3"))
 
-        val jointree2 = runResult.candidates.find(t => t._1.root.getTableDisplayName() == "g3").get._1
+        val jointree2 = convertResult.candidates.find(t => t._1.root.getTableDisplayName() == "g3").get._1
         assertTrue(jointree2.subset.size == 2)
         assertTrue(jointree2.subset.exists(r => r.getTableDisplayName() == "g2"))
         assertTrue(jointree2.subset.exists(r => r.getTableDisplayName() == "g3"))
@@ -209,21 +217,22 @@ class LogicalPlanConverterTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        val runResult = converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
 
-        assertTrue(runResult.isFreeConnex)
+        assertTrue(convertResult.outputVariables.size == 2)
+        assertTrue(convertResult.groupByVariables.size == 1)
+        assertTrue(convertResult.aggregations.size == 1)
+        assertTrue(convertResult.aggregations.head._2 == "SUM")
 
-        assertTrue(runResult.outputVariables.size == 2)
-        assertTrue(runResult.groupByVariables.size == 1)
-        assertTrue(runResult.aggregations.size == 1)
-        assertTrue(runResult.aggregations.head._2 == "SUM")
-
-        assertTrue(runResult.candidates.size == 1)
-        val root = runResult.candidates.head._1.root
+        assertTrue(convertResult.candidates.size == 1)
+        val root = convertResult.candidates.head._1.root
         assertTrue(root.isInstanceOf[AuxiliaryRelation])
         assertTrue(root.getVariableList().size == 1)
-        assertTrue(runResult.candidates.head._1.subset.size == 1)
-        assertTrue(runResult.candidates.head._1.subset.contains(root))
+        assertTrue(convertResult.candidates.head._1.subset.size == 1)
+        assertTrue(convertResult.candidates.head._1.subset.contains(root))
     }
 
     @Test
@@ -253,21 +262,22 @@ class LogicalPlanConverterTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        val runResult = converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
 
-        assertTrue(runResult.isFreeConnex)
+        assertTrue(convertResult.outputVariables.size == 2)
+        assertTrue(convertResult.groupByVariables.size == 2)
+        assertTrue(convertResult.aggregations.size == 1)
+        assertTrue(convertResult.aggregations.head._2 == "SUM")
 
-        assertTrue(runResult.outputVariables.size == 2)
-        assertTrue(runResult.groupByVariables.size == 2)
-        assertTrue(runResult.aggregations.size == 1)
-        assertTrue(runResult.aggregations.head._2 == "SUM")
-
-        assertTrue(runResult.candidates.size == 1)
-        val root = runResult.candidates.head._1.root
+        assertTrue(convertResult.candidates.size == 1)
+        val root = convertResult.candidates.head._1.root
         assertTrue(root.isInstanceOf[TableScanRelation])
         assertTrue(root.getVariableList().size == 2)
-        assertTrue(runResult.candidates.head._1.subset.size == 1)
-        assertTrue(runResult.candidates.head._1.subset.contains(root))
+        assertTrue(convertResult.candidates.head._1.subset.size == 1)
+        assertTrue(convertResult.candidates.head._1.subset.contains(root))
     }
 
     @Test
@@ -297,25 +307,28 @@ class LogicalPlanConverterTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        val runResult = converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
 
-        assertTrue(runResult.groupByVariables.size == 2)
-        assertTrue(runResult.aggregations.size == 3)
-        assertTrue(runResult.aggregations(0)._2 == "COUNT")
-        assertTrue(runResult.aggregations(1)._2 == "SUM")
-        assertTrue(runResult.aggregations(2)._2 == "AVG")
-        assertTrue(runResult.outputVariables.size == 4)
-        assertTrue(runResult.outputVariables(0) == runResult.aggregations(0)._1)
-        assertTrue(runResult.outputVariables(1) == runResult.groupByVariables(0))
-        assertTrue(runResult.outputVariables(2) == runResult.aggregations(1)._1)
-        assertTrue(runResult.outputVariables(3) == runResult.aggregations(2)._1)
+        assertTrue(convertResult.groupByVariables.size == 2)
+        assertTrue(convertResult.aggregations.size == 3)
+        assertTrue(convertResult.aggregations(0)._2 == "COUNT")
+        assertTrue(convertResult.aggregations(1)._2 == "SUM")
+        assertTrue(convertResult.aggregations(2)._2 == "AVG")
+        assertTrue(convertResult.outputVariables.size == 4)
+        assertTrue(convertResult.outputVariables(0) == convertResult.aggregations(0)._1)
+        assertTrue(convertResult.outputVariables(1) == convertResult.groupByVariables(0))
+        assertTrue(convertResult.outputVariables(2) == convertResult.aggregations(1)._1)
+        assertTrue(convertResult.outputVariables(3) == convertResult.aggregations(2)._1)
 
-        assertTrue(runResult.candidates.size == 1)
-        val root = runResult.candidates.head._1.root
+        assertTrue(convertResult.candidates.size == 1)
+        val root = convertResult.candidates.head._1.root
         assertTrue(root.isInstanceOf[TableScanRelation])
         assertTrue(root.getVariableList().size == 2)
-        assertTrue(runResult.candidates.head._1.subset.size == 1)
-        assertTrue(runResult.candidates.head._1.subset.contains(root))
+        assertTrue(convertResult.candidates.head._1.subset.size == 1)
+        assertTrue(convertResult.candidates.head._1.subset.contains(root))
     }
 
     @Test
@@ -345,22 +358,23 @@ class LogicalPlanConverterTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        val runResult = converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
 
-        assertFalse(runResult.isFreeConnex)
+        assertTrue(convertResult.groupByVariables.size == 2)
+        assertTrue(convertResult.aggregations.size == 1)
+        assertTrue(convertResult.aggregations(0)._2 == "COUNT")
+        assertTrue(convertResult.outputVariables.size == 1)
+        assertTrue(convertResult.outputVariables(0) == convertResult.aggregations(0)._1)
 
-        assertTrue(runResult.groupByVariables.size == 2)
-        assertTrue(runResult.aggregations.size == 1)
-        assertTrue(runResult.aggregations(0)._2 == "COUNT")
-        assertTrue(runResult.outputVariables.size == 1)
-        assertTrue(runResult.outputVariables(0) == runResult.aggregations(0)._1)
-
-        assertTrue(runResult.candidates.size == 2)
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g2"))
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g3"))
-        assertTrue(runResult.candidates.forall(t => t._1.subset.size == 2))
-        assertTrue(runResult.candidates.forall(t => t._1.subset.exists(r => r.getTableDisplayName() == "g2")))
-        assertTrue(runResult.candidates.forall(t => t._1.subset.exists(r => r.getTableDisplayName() == "g3")))
+        assertTrue(convertResult.candidates.size == 2)
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g2"))
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g3"))
+        assertTrue(convertResult.candidates.forall(t => t._1.subset.size == 2))
+        assertTrue(convertResult.candidates.forall(t => t._1.subset.exists(r => r.getTableDisplayName() == "g2")))
+        assertTrue(convertResult.candidates.forall(t => t._1.subset.exists(r => r.getTableDisplayName() == "g3")))
     }
 
     @Test
@@ -389,22 +403,23 @@ class LogicalPlanConverterTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        val runResult = converter.run(logicalPlan)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
 
-        assertTrue(runResult.isFreeConnex)
+        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.aggregations.size == 1)
+        assertTrue(convertResult.aggregations(0)._2 == "COUNT")
+        assertTrue(convertResult.outputVariables.size == 1)
+        assertTrue(convertResult.outputVariables(0) == convertResult.aggregations(0)._1)
 
-        assertTrue(runResult.groupByVariables.isEmpty)
-        assertTrue(runResult.aggregations.size == 1)
-        assertTrue(runResult.aggregations(0)._2 == "COUNT")
-        assertTrue(runResult.outputVariables.size == 1)
-        assertTrue(runResult.outputVariables(0) == runResult.aggregations(0)._1)
-
-        assertTrue(runResult.candidates.size == 4)
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g1"))
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g2"))
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g3"))
-        assertTrue(runResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g4"))
-        assertTrue(runResult.candidates.forall(t => t._1.subset.isEmpty))
+        assertTrue(convertResult.candidates.size == 4)
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g1"))
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g2"))
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g3"))
+        assertTrue(convertResult.candidates.exists(t => t._1.root.getTableDisplayName() == "g4"))
+        assertTrue(convertResult.candidates.forall(t => t._1.subset.isEmpty))
     }
 
     @Test
@@ -547,9 +562,12 @@ class LogicalPlanConverterTest {
         val logicalPlan = sqlPlusPlanner.toLogicalPlan(sqlNode)
         val variableManager = new VariableManager
         val converter = new LogicalPlanConverter(variableManager, catalogManager)
-        val runResult = converter.run(logicalPlan, hint = null)
+        val context = converter.traverseLogicalPlan(logicalPlan)
+        val optDryRunResult = converter.dryRun(context)
+        assertTrue(optDryRunResult.nonEmpty)
+        val convertResult = converter.convertAcyclic(context)
 
-        assertTrue(runResult.candidates.forall(c => {
+        assertTrue(convertResult.candidates.forall(c => {
             (c._1.isFixRoot && c._1.root.getTableDisplayName() == "lineitem") ||
                 (!c._1.isFixRoot && c._1.root.asInstanceOf[AuxiliaryRelation].supportingRelation.getTableDisplayName() == "customer") ||
                 (!c._1.isFixRoot && c._1.root.asInstanceOf[AuxiliaryRelation].supportingRelation.getTableDisplayName() == "nation")
