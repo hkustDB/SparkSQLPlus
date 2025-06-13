@@ -424,39 +424,66 @@ class TpchQueriesTest {
 
     @Test
     def testTpchQ8(): Unit = {
-        val query =
+        /**
+         * SELECT o_orderkey,
+         *  o_custkey,
+         *  o_orderstatus,
+         *  o_totalprice,
+         *  o_orderdate,
+         *  o_orderpriority,
+         *  o_clerk,
+         *  o_shippriority,
+         *  o_comment,
+         *  EXTRACT(YEAR FROM o_orderdate)
+         *  FROM orders
+         */
+        val ddlView1 =
             """
-              |SELECT o_year,
-              |       SUM(CASE
-              |               WHEN nation = 'BRAZIL'
-              |                   THEN volume
-              |               ELSE 0
-              |           END) / SUM(volume) AS mkt_share
-              |FROM (SELECT EXTRACT(YEAR FROM o_orderdate)     AS o_year,
-              |             l_extendedprice * (1 - l_discount) AS volume,
-              |             n2.n_name                          AS nation
-              |      FROM part,
-              |           supplier,
-              |           lineitem,
-              |           orders,
-              |           customer,
-              |           nation n1,
-              |           nation n2,
-              |           region
-              |      WHERE p_partkey = l_partkey
-              |        AND s_suppkey = l_suppkey
-              |        AND l_orderkey = o_orderkey
-              |        AND o_custkey = c_custkey
-              |        AND c_nationkey = n1.n_nationkey
-              |        AND n1.n_regionkey = r_regionkey
-              |        AND r_name = 'AMERICA'
-              |        AND s_nationkey = n2.n_nationkey
-              |        AND o_orderdate BETWEEN DATE '1995-01-01' AND DATE '1996-12-31'
-              |        AND p_type = 'ECONOMY ANODIZED STEEL') AS all_nations
-              |GROUP BY o_year
+              |CREATE TABLE view1
+              |(
+              |    v1_orderkey      INTEGER,
+              |    v1_custkey       INTEGER,
+              |    v1_orderstatus   VARCHAR,
+              |    v1_totalprice    DECIMAL,
+              |    v1_orderdate     DATE,
+              |    v1_orderpriority VARCHAR,
+              |    v1_clerk         VARCHAR,
+              |    v1_shippriority  INTEGER,
+              |    v1_comment       VARCHAR,
+              |    v1_year          INTEGER
+              |);
               |""".stripMargin
 
-        val nodeList = SqlPlusParser.parseDdl(ddl)
+        val query =
+            """
+              |SELECT v1_year,
+              |       SUM(CASE
+              |               WHEN n2.n_name = 'BRAZIL'
+              |                   THEN l_extendedprice * (1 - l_discount)
+              |               ELSE 0
+              |           END) / SUM(l_extendedprice * (1 - l_discount)) AS mkt_share
+              |FROM part,
+              |     supplier,
+              |     lineitem,
+              |     customer,
+              |     nation n1,
+              |     nation n2,
+              |     region,
+              |     view1
+              |WHERE p_partkey = l_partkey
+              |  AND s_suppkey = l_suppkey
+              |  AND l_orderkey = v1_orderkey
+              |  AND v1_custkey = c_custkey
+              |  AND c_nationkey = n1.n_nationkey
+              |  AND n1.n_regionkey = r_regionkey
+              |  AND r_name = 'AMERICA'
+              |  AND s_nationkey = n2.n_nationkey
+              |  AND v1_orderdate BETWEEN DATE '1995-01-01' AND DATE '1996-12-31'
+              |  AND p_type = 'ECONOMY ANODIZED STEEL'
+              |GROUP BY v1_year
+              |""".stripMargin
+
+        val nodeList = SqlPlusParser.parseDdl(ddl + ddlView1)
         val catalogManager = new CatalogManager
         catalogManager.register(nodeList)
         val sqlNode = SqlPlusParser.parseDml(query)

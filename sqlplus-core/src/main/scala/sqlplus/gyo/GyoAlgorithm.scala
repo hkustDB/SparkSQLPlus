@@ -215,7 +215,13 @@ class GyoAlgorithm {
                 (joinTree, hyperGraph)
             })
 
-            GyoResult(candidates)
+            val finalCandidates = if (outputVariables.nonEmpty) {
+                candidates.filter(c => c._1.root.getNodes().intersect(outputVariables).nonEmpty)
+            } else {
+                candidates
+            }
+
+            GyoResult(finalCandidates)
         } else {
             throw new IllegalStateException("some final states have more than 1 relation")
         }
