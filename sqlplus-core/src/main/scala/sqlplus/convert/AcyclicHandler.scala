@@ -15,11 +15,10 @@ class AcyclicHandler(val gyo: GyoAlgorithm) {
     }
 
     def handle(context: Context, relationalHyperGraph: RelationalHyperGraph): HandleResult = {
-        val requiredVariables = context.requiredVariables
         val groupByVariables = context.groupByVariables
         val aggregations = context.aggregations
 
-        val topVariables = if (aggregations.nonEmpty && groupByVariables.nonEmpty) groupByVariables.toSet else requiredVariables
+        val topVariables = groupByVariables.toSet
 
         val gyoResult = gyo.run(relationalHyperGraph, topVariables)
         val handleResult = HandleResult.fromGyoResult(gyoResult)

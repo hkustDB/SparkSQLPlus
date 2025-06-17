@@ -9,12 +9,11 @@ import scala.collection.mutable
 class HintHandler {
     def handle(context: Context, hint: HintNode): HandleResult = {
         val relations = context.relations
-        val requiredVariables = context.requiredVariables
         val groupByVariables = context.groupByVariables
         val aggregations = context.aggregations
         val relationalHyperGraph = relations.foldLeft(RelationalHyperGraph.EMPTY)((g, r) => g.addHyperEdge(r))
 
-        val topVariables = if (aggregations.nonEmpty && groupByVariables.nonEmpty) groupByVariables.toSet else requiredVariables
+        val topVariables = groupByVariables.toSet
 
         val relationMap = relationalHyperGraph.getEdges().flatMap(r => {
             if (r.getTableDisplayName() == r.getTableName()) {

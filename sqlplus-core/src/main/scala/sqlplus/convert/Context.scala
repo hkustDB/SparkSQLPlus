@@ -9,7 +9,7 @@ class Context {
     var relations = List.empty[Relation]
     var conditions = List.empty[Condition]
     var outputVariables = List.empty[Variable]
-    var requiredVariables = Set.empty[Variable]
+//    var requiredVariables = Set.empty[Variable]
     var computations = Map.empty[Variable, Expression]
     var isFull: Boolean = false
     var groupByVariables = List.empty[Variable]

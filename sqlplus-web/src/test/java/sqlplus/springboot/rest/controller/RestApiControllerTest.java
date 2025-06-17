@@ -140,7 +140,7 @@ public class RestApiControllerTest {
         assertEquals(4, ((List<String>) data.get("outputVariables")).size());
 
         // groupByVariables
-        assertEquals(0, ((List<Object>) data.get("groupByVariables")).size());
+        assertEquals(5, ((List<Object>) data.get("groupByVariables")).size());
 
         // aggregations
         assertEquals(0, ((List<Object>) data.get("aggregations")).size());

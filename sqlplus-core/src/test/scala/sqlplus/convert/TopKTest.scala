@@ -47,7 +47,7 @@ class TopKTest {
 
         assertTrue(convertResult.isFull)
         assertTrue(convertResult.outputVariables.size == 4)
-        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.groupByVariables.size == 5)
         assertTrue(convertResult.aggregations.isEmpty)
 
         assertTrue(convertResult.candidates.size == 2)
@@ -96,7 +96,7 @@ class TopKTest {
 
         assertTrue(convertResult.isFull)
         assertTrue(convertResult.outputVariables.size == 5)
-        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.groupByVariables.size == 7)
         assertTrue(convertResult.aggregations.isEmpty)
 
         assertTrue(convertResult.candidates.size == 3)
@@ -153,7 +153,7 @@ class TopKTest {
 
         assertTrue(convertResult.isFull)
         assertTrue(convertResult.outputVariables.size == 6)
-        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.groupByVariables.size == 9)
         assertTrue(convertResult.aggregations.isEmpty)
 
         assertTrue(convertResult.candidates.size == 4)
@@ -204,7 +204,7 @@ class TopKTest {
 
         assertTrue(convertResult.isFull)
         assertTrue(convertResult.outputVariables.size == 5)
-        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.groupByVariables.size == 7)
         assertTrue(convertResult.aggregations.isEmpty)
 
         assertTrue(convertResult.candidates.size == 9)
@@ -261,7 +261,7 @@ class TopKTest {
 
         assertTrue(convertResult.isFull)
         assertTrue(convertResult.outputVariables.size == 6)
-        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.groupByVariables.size == 9)
         assertTrue(convertResult.aggregations.isEmpty)
 
         assertTrue(convertResult.candidates.size == 12)

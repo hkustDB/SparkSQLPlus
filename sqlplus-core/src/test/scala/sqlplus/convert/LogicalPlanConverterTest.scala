@@ -42,7 +42,7 @@ class LogicalPlanConverterTest {
 
         assertTrue(convertResult.isFull)
         assertTrue(convertResult.outputVariables.size == 4)
-        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.groupByVariables.size == 4)
         assertTrue(convertResult.aggregations.isEmpty)
 
         assertTrue(convertResult.candidates.size == 3)
@@ -88,7 +88,7 @@ class LogicalPlanConverterTest {
 
         assertFalse(convertResult.isFull)
         assertTrue(convertResult.outputVariables.size == 2)
-        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.groupByVariables.size == 2)
         assertTrue(convertResult.aggregations.isEmpty)
 
         assertTrue(convertResult.candidates.size == 1)
@@ -131,7 +131,7 @@ class LogicalPlanConverterTest {
 
         assertFalse(convertResult.isFull)
         assertTrue(convertResult.outputVariables.size == 1)
-        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.groupByVariables.size == 1)
         assertTrue(convertResult.aggregations.isEmpty)
 
         assertTrue(convertResult.candidates.size == 1)
@@ -175,7 +175,7 @@ class LogicalPlanConverterTest {
 
         assertFalse(convertResult.isFull)
         assertTrue(convertResult.outputVariables.size == 3)
-        assertTrue(convertResult.groupByVariables.isEmpty)
+        assertTrue(convertResult.groupByVariables.size == 3)
         assertTrue(convertResult.aggregations.isEmpty)
 
         assertTrue(convertResult.candidates.size == 2)

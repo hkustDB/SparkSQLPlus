@@ -184,7 +184,6 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         val computations = mutable.HashMap.empty[Variable, Expression]  // additional computations(in LogicalProject)
         if (optLogicalProject.isEmpty) {
             context.outputVariables = aggregateOutputVariables
-            context.requiredVariables = aggregations.map(t => t._1).flatMap(v => context.dependingVariables(v)).toSet
         } else {
             val outputVariables = ListBuffer.empty[Variable]
             optLogicalProject.get.getProjects.toList.foreach({
@@ -205,12 +204,11 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
                     outputVariables.append(variable)
             })
             context.outputVariables = outputVariables.toList
-            context.requiredVariables = (context.outputVariables.flatMap(v => context.dependingVariables(v)).toSet -- groupByVariables)
             context.computations = context.computations ++ computations.toMap
         }
         context.groupByVariables = groupByVariables
         context.aggregations = aggregations.toList
-
+        context.isFull = false
         context
     }
 
@@ -319,6 +317,7 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         variableList.foreach(v => context.dependingVariables(v) = Set(v))
         if (optLogicalProject.isEmpty) {
             context.outputVariables = variableList
+            context.groupByVariables = context.outputVariables.flatMap(v => context.dependingVariables(v))
             context.computations = computations.toMap
         } else {
             val outputVariablesBuffer = ListBuffer.empty[Variable]
@@ -340,13 +339,14 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
                     context.dependingVariables(variable) = Set()
             })
             context.outputVariables = outputVariablesBuffer.toList
-            context.requiredVariables = context.outputVariables.flatMap(v => context.dependingVariables(v)).toSet
+            context.groupByVariables = context.outputVariables.flatMap(v => context.dependingVariables(v))
             context.computations = computations.toMap
         }
 
+        val required = context.outputVariables.flatMap(v => context.dependingVariables(v)).toSet
         context.relations = relations
         context.conditions = conditions
-        context.isFull = variableList.forall(v => context.requiredVariables.contains(v))
+        context.isFull = variableList.forall(v => required.contains(v))
         context
     }
 
