@@ -1,0 +1,38 @@
+server:
+  port: 8848
+
+logging:
+  config: classpath:log4j2-spring.xml
+
+sqlplus:
+  home: /Users/sqlplus/Projects/SparkSQLPlus
+
+experiment:
+  mode: local
+  forwarding: false
+  spark:
+    master:
+      host: localhost
+      port: 7077
+      submission:
+        port: 6066
+      web-ui:
+        port: 8080
+    driver:
+      memory: 4g
+      cores: 1
+    executor:
+      memory: 4g
+      cores: 1
+    default:
+      parallelism: 1
+  timeout: 300
+  hdfs:
+    host: localhost
+    port: 50070
+    path: /Users/sqlplus
+    user: sqlplus
+  data:
+    path: /Users/sqlplus/data
+  result:
+    type: web-ui

@@ -6,77 +6,23 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ParseQueryResponse {
-    List<Table> tables = new ArrayList<>();
-    List<JoinTree> joinTrees = new ArrayList<>();
-    List<Computation> computations = new ArrayList<>();
-    List<String> outputVariables = new ArrayList<>();
-    List<String> groupByVariables = new ArrayList<>();
-    List<Aggregation> aggregations = new ArrayList<>();
-    TopK topK = null;
-    boolean isFull;
+    long time;
+    long size;
 
-    public List<Table> getTables() {
-        return tables;
+    public long getTime() {
+        return time;
     }
 
-    public void setTables(List<Table> tables) {
-        this.tables = tables;
+    public void setTime(long time) {
+        this.time = time;
     }
 
-    public List<JoinTree> getJoinTrees() {
-        return joinTrees;
+    public long getSize() {
+        return size;
     }
 
-    public void setJoinTrees(List<JoinTree> joinTrees) {
-        this.joinTrees = joinTrees;
-    }
-
-    public List<Computation> getComputations() {
-        return computations;
-    }
-
-    public void setComputations(List<Computation> computations) {
-        this.computations = computations;
-    }
-
-    public List<String> getOutputVariables() {
-        return outputVariables;
-    }
-
-    public void setOutputVariables(List<String> outputVariables) {
-        this.outputVariables = outputVariables;
-    }
-
-    public List<String> getGroupByVariables() {
-        return groupByVariables;
-    }
-
-    public void setGroupByVariables(List<String> groupByVariables) {
-        this.groupByVariables = groupByVariables;
-    }
-
-    public List<Aggregation> getAggregations() {
-        return aggregations;
-    }
-
-    public void setAggregations(List<Aggregation> aggregations) {
-        this.aggregations = aggregations;
-    }
-
-    public TopK getTopK() {
-        return topK;
-    }
-
-    public void setTopK(TopK topK) {
-        this.topK = topK;
-    }
-
-    public boolean isFull() {
-        return isFull;
-    }
-
-    public void setFull(boolean full) {
-        isFull = full;
+    public void setSize(long size) {
+        this.size = size;
     }
 }
 

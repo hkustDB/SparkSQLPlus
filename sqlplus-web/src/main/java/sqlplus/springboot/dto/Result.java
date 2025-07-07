@@ -3,6 +3,7 @@ package sqlplus.springboot.dto;
 public class Result {
     public final static String SUCCESS = "success";
     public final static String FALLBACK = "fallback";
+    public final static String FAIL = "fail";
 
     private int code;
     private String message = SUCCESS;

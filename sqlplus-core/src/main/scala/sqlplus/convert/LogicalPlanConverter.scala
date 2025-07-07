@@ -40,6 +40,10 @@ class LogicalPlanConverter(val variableManager: VariableManager, val catalogMana
         dryRunHandler.handle(context)
     }
 
+    def enumerate(context: Context): HandleResult = {
+        acyclicHandler.handle(context)
+    }
+
     def convertAcyclic(context: Context): ConvertResult = {
         val handleResult = acyclicHandler.handle(context)
         convertHandleResult(context, handleResult)

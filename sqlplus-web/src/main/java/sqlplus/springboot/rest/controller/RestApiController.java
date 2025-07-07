@@ -10,8 +10,6 @@ import scala.Some;
 import scala.collection.JavaConverters;
 import sqlplus.catalog.CatalogManager;
 import sqlplus.convert.*;
-import sqlplus.expression.Expression;
-import sqlplus.expression.Variable;
 import sqlplus.expression.VariableManager;
 import sqlplus.graph.*;
 import sqlplus.parser.SqlPlusParser;
@@ -23,16 +21,11 @@ import sqlplus.springboot.rest.object.Comparison;
 import sqlplus.springboot.rest.object.JoinTree;
 import sqlplus.springboot.rest.object.JoinTreeEdge;
 import sqlplus.springboot.rest.object.*;
-import sqlplus.springboot.rest.object.TopK;
 import sqlplus.springboot.rest.request.ParseQueryRequest;
 import sqlplus.springboot.rest.response.ParseQueryResponse;
 
 import javax.annotation.Resource;
 import java.util.*;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 @RestController
@@ -57,68 +50,29 @@ public class RestApiController {
             LogicalPlanConverter converter = new LogicalPlanConverter(variableManager, catalogManager);
             Context context = converter.traverseLogicalPlan(logicalPlan);
 
-            Option<ConvertResult> optConvertResult;
             Option<HandleResult> optDryRunResult = converter.dryRun(context);
             boolean isAcyclic = optDryRunResult.nonEmpty();
-            Future<ConvertResult> convertResultFuture = executor.submit(() -> {
-                if (isAcyclic) {
-                    return converter.convertAcyclic(context);
-                } else {
-                    return converter.convertCyclic(context);
-                }
-            });
 
-            int maxTimeout = timeout.orElse(Integer.MAX_VALUE);
-            try {
-                optConvertResult = Some.apply(convertResultFuture.get(maxTimeout, TimeUnit.MILLISECONDS));
-            } catch (InterruptedException | ExecutionException | TimeoutException e1) {
-                optConvertResult = convertResultOnTimeout(converter, context, request.getPlan(), optDryRunResult);
-            }
-
+            long begin = System.currentTimeMillis();
             Result result = new Result();
-            if (optConvertResult.nonEmpty()) {
-                ConvertResult convertResult = optConvertResult.get();
+            if (isAcyclic) {
+                HandleResult handleResult = converter.enumerate(context);
+                long end = System.currentTimeMillis();
                 ParseQueryResponse response = new ParseQueryResponse();
-                response.setTables(tables.stream()
-                        .map(t -> new Table(t.getTableName(), Arrays.stream(t.getTableColumnNames()).collect(Collectors.toList())))
-                        .collect(Collectors.toList()));
-
-                List<JoinTree> joinTrees = JavaConverters.seqAsJavaList(convertResult.candidates()).stream()
-                        .map(t -> buildJoinTree(t._1(), t._2(), t._3(), request.getPlan()))
-                        .collect(Collectors.toList());
-                response.setJoinTrees(joinTrees);
-
-                List<Computation> computations = JavaConverters.seqAsJavaList(convertResult.computations()).stream()
-                        .map(c -> new Computation(c._1.name(), c._2.format()))
-                        .collect(Collectors.toList());
-                response.setComputations(computations);
-
-                response.setOutputVariables(JavaConverters.seqAsJavaList(convertResult.outputVariables()).stream().map(Variable::name).collect(Collectors.toList()));
-                response.setGroupByVariables(JavaConverters.seqAsJavaList(convertResult.groupByVariables()).stream().map(Variable::name).collect(Collectors.toList()));
-                List<Aggregation> aggregations = JavaConverters.seqAsJavaList(convertResult.aggregations()).stream()
-                        .map(t -> new Aggregation(t._1().name(), t._2(), JavaConverters.seqAsJavaList(t._3()).stream().map(Expression::format).collect(Collectors.toList())))
-                        .collect(Collectors.toList());
-                response.setAggregations(aggregations);
-
-                if (convertResult.optTopK().nonEmpty()) {
-                    TopK topK = new TopK();
-                    topK.setOrderByVariable(convertResult.optTopK().get().sortBy().name());
-                    topK.setDesc(convertResult.optTopK().get().isDesc());
-                    topK.setLimit(convertResult.optTopK().get().limit());
-                    response.setTopK(topK);
-                }
-
-                response.setFull(convertResult.isFull());
-
-                result.setCode(200);
+                response.setSize(handleResult.result().size());
+                response.setTime(end - begin);
                 result.setData(response);
-                return result;
-            } else {
                 result.setCode(200);
-                result.setData(null);
-                result.setMessage(Result.FALLBACK);
-                return result;
+                result.setMessage(Result.SUCCESS);
+            } else {
+                ParseQueryResponse response = new ParseQueryResponse();
+                response.setSize(0);
+                response.setTime(0);
+                result.setData(response);
+                result.setCode(200);
+                result.setMessage(Result.FAIL);
             }
+            return result;
         } catch (Exception e) {
             e.printStackTrace();
 
