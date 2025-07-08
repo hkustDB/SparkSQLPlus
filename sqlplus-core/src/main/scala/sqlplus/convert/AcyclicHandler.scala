@@ -16,17 +16,11 @@ class AcyclicHandler(val gyo: GyoAlgorithm) {
 
     def handle(context: Context, relationalHyperGraph: RelationalHyperGraph): HandleResult = {
         val groupByVariables = context.groupByVariables
-        val aggregations = context.aggregations
 
         val topVariables = groupByVariables.toSet
 
         val gyoResult = gyo.run(relationalHyperGraph, topVariables)
-        val handleResult = HandleResult.fromGyoResult(gyoResult)
-
-        val fixRootRelations = tryFixRoot(relationalHyperGraph, aggregations.nonEmpty, groupByVariables.toSet)
-        fixRootRelations.foldLeft(handleResult)((z, r) => {
-            HandleResult.merge(z, HandleResult.fromGyoResult(gyo.runWithFixRoot(relationalHyperGraph, r)))
-        })
+        HandleResult.fromGyoResult(gyoResult)
     }
 
     def tryFixRoot(relationalHyperGraph: RelationalHyperGraph, isAggregation: Boolean, groupByVariables: Set[Variable]): List[Relation] = {
